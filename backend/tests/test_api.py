@@ -1,194 +1,235 @@
-"""API integration tests."""
+"""Pruebas de integración de la API REST de PAE.
+
+Cubre los endpoints principales:
+- Autenticación (login, /me)
+- Pedidos (listar, crear, asignar, responder, actualizar estado)
+- Repartidores (listar, actualizar ubicación)
+- Rutas (obtener ruta activa)
+"""
 import pytest
 
+# Marca todos los tests de este módulo como asíncronos con anyio
 pytestmark = pytest.mark.anyio
 
 
-async def test_health(client):
-    resp = await client.get("/health")
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+async def test_verificar_estado(cliente):
+    """El endpoint /health debe devolver status='ok'."""
+    respuesta = await cliente.get("/health")
+    assert respuesta.status_code == 200
+    assert respuesta.json()["status"] == "ok"
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Autenticación ──────────────────────────────────────────────────────────────
 
-async def test_login_central(client):
-    resp = await client.post("/auth/login", json={"username": "central", "password": "central123"})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "token" in data
-    assert data["user"]["role"] == "central"
-
-
-async def test_login_driver(client):
-    resp = await client.post("/auth/login", json={"username": "driver1", "password": "driver123"})
-    assert resp.status_code == 200
-    assert resp.json()["user"]["role"] == "repartidor"
-
-
-async def test_login_wrong_password(client):
-    resp = await client.post("/auth/login", json={"username": "central", "password": "wrong"})
-    assert resp.status_code == 401
-
-
-async def test_me_no_token(client):
-    resp = await client.get("/auth/me")
-    assert resp.status_code == 403  # HTTPBearer returns 403 when no header
-
-
-async def test_me_with_token(client, central_token):
-    resp = await client.get("/auth/me", headers={"Authorization": f"Bearer {central_token}"})
-    assert resp.status_code == 200
-    assert resp.json()["username"] == "central"
-
-
-# ── Orders ────────────────────────────────────────────────────────────────────
-
-async def test_list_orders_central(client, central_token):
-    resp = await client.get("/orders/", headers={"Authorization": f"Bearer {central_token}"})
-    assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
-    assert len(resp.json()) > 0
-
-
-async def test_create_order_central(client, central_token):
-    resp = await client.post(
-        "/orders/",
-        json={"type": "pickup", "address": "Test St 1", "lat": 40.42, "lng": -3.7},
-        headers={"Authorization": f"Bearer {central_token}"},
+async def test_login_central(cliente):
+    """El operador central debe poder iniciar sesión y recibir un token."""
+    respuesta = await cliente.post(
+        "/auth/login", json={"username": "central", "password": "central123"}
     )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["type"] == "pickup"
-    assert data["status"] == "pending"
+    assert respuesta.status_code == 200
+    datos = respuesta.json()
+    assert "token" in datos
+    assert datos["user"]["role"] == "central"
 
 
-async def test_create_order_driver_forbidden(client, driver1_token):
-    resp = await client.post(
-        "/orders/",
-        json={"type": "pickup", "address": "Test", "lat": 40.42, "lng": -3.7},
-        headers={"Authorization": f"Bearer {driver1_token}"},
+async def test_login_repartidor(cliente):
+    """Un repartidor debe poder iniciar sesión con sus credenciales."""
+    respuesta = await cliente.post(
+        "/auth/login", json={"username": "driver1", "password": "driver123"}
     )
-    assert resp.status_code == 403
+    assert respuesta.status_code == 200
+    assert respuesta.json()["user"]["role"] == "repartidor"
 
 
-async def test_create_order_invalid_type(client, central_token):
-    resp = await client.post(
-        "/orders/",
-        json={"type": "invalid", "address": "Test", "lat": 40.42, "lng": -3.7},
-        headers={"Authorization": f"Bearer {central_token}"},
+async def test_login_contrasena_incorrecta(cliente):
+    """Las credenciales incorrectas deben devolver 401 Unauthorized."""
+    respuesta = await cliente.post(
+        "/auth/login", json={"username": "central", "password": "incorrecta"}
     )
-    assert resp.status_code == 422
+    assert respuesta.status_code == 401
 
 
-async def test_assign_order(client, central_token):
-    # Create order first
-    create_resp = await client.post(
-        "/orders/",
-        json={"type": "pickup", "address": "Assign Test", "lat": 40.42, "lng": -3.71},
-        headers={"Authorization": f"Bearer {central_token}"},
+async def test_yo_sin_token(cliente):
+    """Acceder a /auth/me sin token debe devolver 403."""
+    respuesta = await cliente.get("/auth/me")
+    assert respuesta.status_code == 403  # HTTPBearer devuelve 403 si no hay encabezado
+
+
+async def test_yo_con_token(cliente, token_central):
+    """Con un token válido, /auth/me debe devolver los datos del usuario autenticado."""
+    respuesta = await cliente.get(
+        "/auth/me", headers={"Authorization": f"Bearer {token_central}"}
     )
-    order_id = create_resp.json()["id"]
+    assert respuesta.status_code == 200
+    assert respuesta.json()["username"] == "central"
 
-    resp = await client.post(
-        f"/orders/{order_id}/assign",
+
+# ── Pedidos ────────────────────────────────────────────────────────────────────
+
+async def test_listar_pedidos_central(cliente, token_central):
+    """La central debe poder ver todos los pedidos del sistema."""
+    respuesta = await cliente.get(
+        "/orders/", headers={"Authorization": f"Bearer {token_central}"}
+    )
+    assert respuesta.status_code == 200
+    assert isinstance(respuesta.json(), list)
+    assert len(respuesta.json()) > 0
+
+
+async def test_crear_pedido_central(cliente, token_central):
+    """La central debe poder crear un nuevo pedido con estado 'pending'."""
+    respuesta = await cliente.post(
+        "/orders/",
+        json={"type": "pickup", "address": "Calle Prueba 1", "lat": 40.42, "lng": -3.7},
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert respuesta.status_code == 201
+    datos = respuesta.json()
+    assert datos["type"] == "pickup"
+    assert datos["status"] == "pending"
+
+
+async def test_crear_pedido_repartidor_prohibido(cliente, token_repartidor1):
+    """Un repartidor no debe poder crear pedidos (403 Forbidden)."""
+    respuesta = await cliente.post(
+        "/orders/",
+        json={"type": "pickup", "address": "Prueba", "lat": 40.42, "lng": -3.7},
+        headers={"Authorization": f"Bearer {token_repartidor1}"},
+    )
+    assert respuesta.status_code == 403
+
+
+async def test_crear_pedido_tipo_invalido(cliente, token_central):
+    """Un tipo de pedido no válido debe devolver 422 Unprocessable Entity."""
+    respuesta = await cliente.post(
+        "/orders/",
+        json={"type": "invalido", "address": "Prueba", "lat": 40.42, "lng": -3.7},
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert respuesta.status_code == 422
+
+
+async def test_asignar_pedido(cliente, token_central):
+    """La central debe poder asignar un pedido a un repartidor y recibir el tiempo extra."""
+    # Primero crear un pedido pendiente
+    respuesta_crear = await cliente.post(
+        "/orders/",
+        json={"type": "pickup", "address": "Asignación de prueba", "lat": 40.42, "lng": -3.71},
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    id_pedido = respuesta_crear.json()["id"]
+
+    # Asignar el pedido al repartidor
+    respuesta = await cliente.post(
+        f"/orders/{id_pedido}/assign",
         json={"driver_id": "driver-1"},
-        headers={"Authorization": f"Bearer {central_token}"},
+        headers={"Authorization": f"Bearer {token_central}"},
     )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["order"]["status"] == "assigned"
-    assert isinstance(data["extra_minutes"], float)
+    assert respuesta.status_code == 200
+    datos = respuesta.json()
+    assert datos["order"]["status"] == "assigned"
+    assert isinstance(datos["extra_minutes"], float)
 
 
-async def test_respond_to_order_accept(client, central_token, driver1_token):
-    create_resp = await client.post(
+async def test_responder_pedido_aceptar(cliente, token_central, token_repartidor1):
+    """El repartidor debe poder aceptar una recogida asignada."""
+    respuesta_crear = await cliente.post(
         "/orders/",
-        json={"type": "pickup", "address": "Respond Test", "lat": 40.43, "lng": -3.69},
-        headers={"Authorization": f"Bearer {central_token}"},
+        json={"type": "pickup", "address": "Aceptar prueba", "lat": 40.43, "lng": -3.69},
+        headers={"Authorization": f"Bearer {token_central}"},
     )
-    order_id = create_resp.json()["id"]
+    id_pedido = respuesta_crear.json()["id"]
 
-    await client.post(
-        f"/orders/{order_id}/assign",
+    await cliente.post(
+        f"/orders/{id_pedido}/assign",
         json={"driver_id": "driver-1"},
-        headers={"Authorization": f"Bearer {central_token}"},
+        headers={"Authorization": f"Bearer {token_central}"},
     )
 
-    resp = await client.post(
-        f"/orders/{order_id}/respond",
+    respuesta = await cliente.post(
+        f"/orders/{id_pedido}/respond",
         json={"accepted": True},
-        headers={"Authorization": f"Bearer {driver1_token}"},
+        headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
-    assert resp.status_code == 200
-    assert resp.json()["order"]["status"] == "in_progress"
+    assert respuesta.status_code == 200
+    assert respuesta.json()["order"]["status"] == "in_progress"
 
 
-async def test_respond_to_order_reject(client, central_token, driver1_token):
-    create_resp = await client.post(
+async def test_responder_pedido_rechazar(cliente, token_central, token_repartidor1):
+    """El repartidor debe poder rechazar una recogida asignada."""
+    respuesta_crear = await cliente.post(
         "/orders/",
-        json={"type": "pickup", "address": "Reject Test", "lat": 40.43, "lng": -3.69},
-        headers={"Authorization": f"Bearer {central_token}"},
+        json={"type": "pickup", "address": "Rechazar prueba", "lat": 40.43, "lng": -3.69},
+        headers={"Authorization": f"Bearer {token_central}"},
     )
-    order_id = create_resp.json()["id"]
+    id_pedido = respuesta_crear.json()["id"]
 
-    await client.post(
-        f"/orders/{order_id}/assign",
+    await cliente.post(
+        f"/orders/{id_pedido}/assign",
         json={"driver_id": "driver-1"},
-        headers={"Authorization": f"Bearer {central_token}"},
+        headers={"Authorization": f"Bearer {token_central}"},
     )
 
-    resp = await client.post(
-        f"/orders/{order_id}/respond",
+    respuesta = await cliente.post(
+        f"/orders/{id_pedido}/respond",
         json={"accepted": False},
-        headers={"Authorization": f"Bearer {driver1_token}"},
+        headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
-    assert resp.status_code == 200
-    assert resp.json()["order"]["status"] == "rejected"
+    assert respuesta.status_code == 200
+    assert respuesta.json()["order"]["status"] == "rejected"
 
 
-# ── Drivers ───────────────────────────────────────────────────────────────────
+# ── Repartidores ───────────────────────────────────────────────────────────────
 
-async def test_list_drivers_central(client, central_token):
-    resp = await client.get("/drivers/", headers={"Authorization": f"Bearer {central_token}"})
-    assert resp.status_code == 200
-    drivers = resp.json()
-    assert isinstance(drivers, list)
-    assert len(drivers) >= 2
-
-
-async def test_list_drivers_driver_forbidden(client, driver1_token):
-    resp = await client.get("/drivers/", headers={"Authorization": f"Bearer {driver1_token}"})
-    assert resp.status_code == 403
+async def test_listar_repartidores_central(cliente, token_central):
+    """La central debe poder ver la lista de todos los repartidores con ubicación."""
+    respuesta = await cliente.get(
+        "/drivers/", headers={"Authorization": f"Bearer {token_central}"}
+    )
+    assert respuesta.status_code == 200
+    repartidores = respuesta.json()
+    assert isinstance(repartidores, list)
+    assert len(repartidores) >= 2
 
 
-async def test_update_driver_location(client, driver1_token):
-    resp = await client.put(
+async def test_listar_repartidores_repartidor_prohibido(cliente, token_repartidor1):
+    """Un repartidor no debe poder ver la lista de otros repartidores (403)."""
+    respuesta = await cliente.get(
+        "/drivers/", headers={"Authorization": f"Bearer {token_repartidor1}"}
+    )
+    assert respuesta.status_code == 403
+
+
+async def test_actualizar_ubicacion_repartidor(cliente, token_repartidor1):
+    """El repartidor debe poder actualizar su propia ubicación GPS."""
+    respuesta = await cliente.put(
         "/drivers/driver-1/location",
         json={"lat": 40.42, "lng": -3.71, "heading": 90.0},
-        headers={"Authorization": f"Bearer {driver1_token}"},
+        headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
-    assert resp.status_code == 200
-    assert resp.json()["success"] is True
+    assert respuesta.status_code == 200
+    assert respuesta.json()["success"] is True
 
 
-async def test_update_other_driver_location_forbidden(client, driver1_token):
-    resp = await client.put(
+async def test_actualizar_ubicacion_otro_repartidor_prohibido(cliente, token_repartidor1):
+    """Un repartidor no debe poder actualizar la ubicación de otro (403)."""
+    respuesta = await cliente.put(
         "/drivers/driver-2/location",
         json={"lat": 40.42, "lng": -3.71},
-        headers={"Authorization": f"Bearer {driver1_token}"},
+        headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
-    assert resp.status_code == 403
+    assert respuesta.status_code == 403
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+# ── Rutas ─────────────────────────────────────────────────────────────────────
 
-async def test_get_route(client, driver1_token):
-    resp = await client.get(
+async def test_obtener_ruta_repartidor(cliente, token_repartidor1):
+    """El repartidor debe poder obtener su ruta activa con la lista de paradas."""
+    respuesta = await cliente.get(
         "/orders/route/driver-1",
-        headers={"Authorization": f"Bearer {driver1_token}"},
+        headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "orders" in data
-    assert isinstance(data["orders"], list)
+    assert respuesta.status_code == 200
+    datos = respuesta.json()
+    assert "orders" in datos
+    assert isinstance(datos["orders"], list)

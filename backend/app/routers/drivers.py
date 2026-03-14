@@ -1,18 +1,30 @@
-"""Drivers router."""
+"""Router de repartidores: listado y gestión de ubicaciones.
+
+Endpoints:
+  GET  /drivers/              → Lista todos los repartidores con su ubicación (solo Central)
+  GET  /drivers/{id}/location → Obtiene la ubicación de un repartidor concreto
+  PUT  /drivers/{id}/location → Actualiza la ubicación del repartidor autenticado
+"""
 from fastapi import APIRouter, HTTPException, status, Depends
 
-from app.database import get_connection
-from app.schemas import DriverOut, LocationUpdate
-from app.auth import get_current_user, require_central
+from app.database import obtener_conexion
+from app.schemas import RepartidorRespuesta, ActualizarUbicacion
+from app.auth import obtener_usuario_actual, requerir_central
 
-router = APIRouter(prefix="/drivers", tags=["drivers"])
+# Enrutador de repartidores con prefijo /drivers
+enrutador = APIRouter(prefix="/drivers", tags=["repartidores"])
 
 
-@router.get("/", response_model=list[DriverOut])
-def list_drivers(_: dict = Depends(require_central)):
-    """List all drivers with their current location. Central only."""
-    conn = get_connection()
-    rows = conn.execute(
+@enrutador.get("/", response_model=list[RepartidorRespuesta])
+def listar_repartidores(_: dict = Depends(requerir_central)):
+    """Devuelve todos los repartidores con su última ubicación registrada.
+
+    Solo accesible para operadores centrales.
+    Si un repartidor no ha enviado ubicación aún, los campos lat/lng/heading
+    aparecen como null.
+    """
+    conexion = obtener_conexion()
+    filas = conexion.execute(
         """
         SELECT u.id, u.username, u.name,
                dl.lat, dl.lng, dl.heading,
@@ -22,32 +34,51 @@ def list_drivers(_: dict = Depends(require_central)):
         WHERE u.role = 'repartidor'
         """
     ).fetchall()
-    return [dict(r) for r in rows]
+    return [dict(fila) for fila in filas]
 
 
-@router.get("/{driver_id}/location")
-def get_driver_location(driver_id: str, _: dict = Depends(get_current_user)):
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM driver_locations WHERE driver_id = ?", (driver_id,)
-    ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Location not found")
-    return dict(row)
-
-
-@router.put("/{driver_id}/location")
-def update_driver_location(
-    driver_id: str,
-    body: LocationUpdate,
-    current_user: dict = Depends(get_current_user),
+@enrutador.get("/{id_repartidor}/location")
+def obtener_ubicacion_repartidor(
+    id_repartidor: str,
+    _: dict = Depends(obtener_usuario_actual),
 ):
-    """Update a driver's location. Only the driver themselves can do this."""
-    if current_user.get("role") != "repartidor" or current_user.get("id") != driver_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    """Devuelve la última ubicación conocida de un repartidor específico.
 
-    conn = get_connection()
-    conn.execute(
+    Raises:
+        HTTPException 404: Si el repartidor no tiene ubicación registrada.
+    """
+    conexion = obtener_conexion()
+    fila = conexion.execute(
+        "SELECT * FROM driver_locations WHERE driver_id = ?", (id_repartidor,)
+    ).fetchone()
+    if not fila:
+        raise HTTPException(status_code=404, detail="Ubicación no encontrada")
+    return dict(fila)
+
+
+@enrutador.put("/{id_repartidor}/location")
+def actualizar_ubicacion_repartidor(
+    id_repartidor: str,
+    cuerpo: ActualizarUbicacion,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Actualiza la posición GPS del repartidor en la base de datos.
+
+    Solo el propio repartidor puede actualizar su ubicación.
+    Si no existe una fila previa, se crea automáticamente (INSERT OR UPDATE).
+
+    Raises:
+        HTTPException 403: Si el repartidor intenta actualizar la ubicación de otro.
+    """
+    # Verificar que el repartidor solo actualice su propia ubicación
+    if usuario_actual.get("role") != "repartidor" or usuario_actual.get("id") != id_repartidor:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo puedes actualizar tu propia ubicación",
+        )
+
+    conexion = obtener_conexion()
+    conexion.execute(
         """
         INSERT INTO driver_locations (driver_id, lat, lng, heading, updated_at)
         VALUES (?, ?, ?, ?, datetime('now'))
@@ -57,7 +88,7 @@ def update_driver_location(
             heading = excluded.heading,
             updated_at = excluded.updated_at
         """,
-        (driver_id, body.lat, body.lng, body.heading),
+        (id_repartidor, cuerpo.lat, cuerpo.lng, cuerpo.heading),
     )
-    conn.commit()
+    conexion.commit()
     return {"success": True}

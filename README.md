@@ -3,6 +3,8 @@ Repositorio para la aplicación de gestión de rutas, pedidos y recogidas
 
 ---
 
+> 📖 **Tutorial completo en español**: [TUTORIAL.md](TUTORIAL.md)
+
 ## PAE – Gestión de Rutas de Última Milla
 
 Aplicación web full-stack para gestionar rutas de repartidores en tiempo real, con notificaciones de recogidas y optimización de trayectos.
@@ -77,7 +79,7 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 # 3. Arrancar el servidor (crea la BD y datos demo automáticamente)
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:aplicacion --reload --port 8000
 ```
 
 Abrir **http://localhost:8000** en el navegador.

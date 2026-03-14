@@ -1,58 +1,85 @@
-"""WebSocket connection manager for real-time location updates."""
+"""Gestor de conexiones WebSocket para actualizaciones de ubicación en tiempo real.
+
+Mantiene un registro de todos los WebSockets activos separados por rol:
+- _repartidores: un WebSocket por repartidor (clave = id del repartidor)
+- _centrales: lista de WebSockets de operadores centrales (puede haber varios)
+
+Al desconectarse un repartidor, se notifica automáticamente a todos los
+operadores centrales para que actualicen el mapa.
+"""
 import asyncio
 import json
 from typing import Dict
 from fastapi import WebSocket
 
 
-class ConnectionManager:
-    """Keeps track of active WebSocket connections by user id and role."""
+class GestorConexiones:
+    """Gestiona todas las conexiones WebSocket activas por tipo de usuario.
+
+    Uso típico:
+        gestor = GestorConexiones()
+        await gestor.conectar_repartidor("driver-1", websocket)
+        await gestor.difundir_a_central({"type": "driver:location:update", ...})
+    """
 
     def __init__(self) -> None:
-        # driver_id -> WebSocket
-        self._drivers: Dict[str, WebSocket] = {}
-        # list of central connections
-        self._central: list[WebSocket] = []
+        # Diccionario id_repartidor → WebSocket
+        self._repartidores: Dict[str, WebSocket] = {}
+        # Lista de WebSockets de operadores centrales conectados
+        self._centrales: list[WebSocket] = []
 
-    # ── Connection lifecycle ───────────────────────────────────────────────────
+    # ── Ciclo de vida de conexiones ────────────────────────────────────────────
 
-    async def connect_driver(self, driver_id: str, ws: WebSocket) -> None:
+    async def conectar_repartidor(self, id_repartidor: str, ws: WebSocket) -> None:
+        """Acepta y registra la conexión WebSocket de un repartidor."""
         await ws.accept()
-        self._drivers[driver_id] = ws
+        self._repartidores[id_repartidor] = ws
 
-    async def connect_central(self, ws: WebSocket) -> None:
+    async def conectar_central(self, ws: WebSocket) -> None:
+        """Acepta y registra la conexión WebSocket de un operador central."""
         await ws.accept()
-        self._central.append(ws)
+        self._centrales.append(ws)
 
-    def disconnect_driver(self, driver_id: str) -> None:
-        self._drivers.pop(driver_id, None)
+    def desconectar_repartidor(self, id_repartidor: str) -> None:
+        """Elimina el WebSocket del repartidor del registro."""
+        self._repartidores.pop(id_repartidor, None)
 
-    def disconnect_central(self, ws: WebSocket) -> None:
-        if ws in self._central:
-            self._central.remove(ws)
+    def desconectar_central(self, ws: WebSocket) -> None:
+        """Elimina el WebSocket de un operador central del registro."""
+        if ws in self._centrales:
+            self._centrales.remove(ws)
 
-    # ── Broadcast helpers ─────────────────────────────────────────────────────
+    # ── Métodos de envío de mensajes ───────────────────────────────────────────
 
-    async def broadcast_to_central(self, message: dict) -> None:
-        """Send a JSON message to all connected Central users."""
-        dead: list[WebSocket] = []
-        for ws in list(self._central):
+    async def difundir_a_central(self, mensaje: dict) -> None:
+        """Envía un mensaje JSON a todos los operadores centrales conectados.
+
+        Si alguna conexión falla (cliente desconectado sin notificación),
+        se elimina automáticamente del registro.
+        """
+        conexiones_muertas: list[WebSocket] = []
+        for ws in list(self._centrales):
             try:
-                await ws.send_json(message)
+                await ws.send_json(mensaje)
             except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect_central(ws)
+                # Conexión rota: se eliminará al terminar el bucle
+                conexiones_muertas.append(ws)
+        for ws in conexiones_muertas:
+            self.desconectar_central(ws)
 
-    async def send_to_driver(self, driver_id: str, message: dict) -> None:
-        """Send a JSON message to a specific driver."""
-        ws = self._drivers.get(driver_id)
+    async def enviar_a_repartidor(self, id_repartidor: str, mensaje: dict) -> None:
+        """Envía un mensaje JSON a un repartidor específico.
+
+        Si el repartidor no está conectado o la conexión falló, no hace nada.
+        """
+        ws = self._repartidores.get(id_repartidor)
         if ws:
             try:
-                await ws.send_json(message)
+                await ws.send_json(mensaje)
             except Exception:
-                self.disconnect_driver(driver_id)
+                # Conexión rota → limpiar el registro
+                self.desconectar_repartidor(id_repartidor)
 
 
-# Singleton instance shared across all routers
-manager = ConnectionManager()
+# Instancia única (singleton) compartida entre todos los routers de la aplicación
+gestor = GestorConexiones()

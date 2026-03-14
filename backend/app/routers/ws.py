@@ -1,71 +1,89 @@
-"""WebSocket router for real-time driver location updates and pickup notifications."""
+"""Router WebSocket para comunicación en tiempo real.
+
+Canal único /ws?token=<jwt> que maneja tres tipos de mensajes:
+
+Mensajes que envía el REPARTIDOR al servidor:
+  { "type": "driver:location",       "lat": ..., "lng": ..., "heading": ... }
+  { "type": "driver:pickup:response","order_id": "...", "accepted": true/false }
+
+Mensajes que envía la CENTRAL al servidor:
+  { "type": "central:pickup:notify", "order_id": "...", "driver_id": "..." }
+
+Mensajes que el servidor envía a la CENTRAL:
+  { "type": "driver:location:update","driver_id": ..., "name": ..., "lat": ..., "lng": ..., "heading": ... }
+  { "type": "driver:offline",        "driver_id": ... }
+  { "type": "pickup:response",       "order_id": ..., "driver_id": ..., "driver_name": ..., "accepted": ... }
+
+Mensajes que el servidor envía al REPARTIDOR:
+  { "type": "pickup:notification",   "order": {...}, "extra_minutes": ... }
+"""
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
 
-from app.auth import decode_token
-from app.database import get_connection
-from app.routing import calculate_extra_time
-from app.ws_manager import manager
+from app.auth import decodificar_token
+from app.database import obtener_conexion
+from app.routing import calcular_tiempo_extra
+from app.ws_manager import gestor
 
-router = APIRouter(tags=["websocket"])
+# Enrutador WebSocket (sin prefijo, el endpoint se llama /ws)
+enrutador = APIRouter(tags=["websocket"])
 
 
-@router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+@enrutador.websocket("/ws")
+async def punto_websocket(websocket: WebSocket, token: str = Query(...)):
+    """Endpoint WebSocket principal de la aplicación PAE.
+
+    El cliente debe autenticarse enviando su token JWT como parámetro de consulta:
+      ws://localhost:8000/ws?token=<jwt>
+
+    Una vez conectado, el servidor gestiona el ciclo de vida automáticamente:
+    - Los repartidores se registran en el gestor y emiten su ubicación
+    - Los operadores centrales reciben actualizaciones de todos los repartidores
+    - Al desconectarse, se notifica a la central
     """
-    Unified WebSocket endpoint.  Clients authenticate via ?token=<jwt>.
-
-    Driver → server messages:
-        { "type": "driver:location", "lat": ..., "lng": ..., "heading": ... }
-        { "type": "driver:pickup:response", "order_id": "...", "accepted": true/false }
-
-    Server → Central messages:
-        { "type": "driver:location:update", "driver_id": ..., "name": ..., "lat": ..., "lng": ..., "heading": ... }
-        { "type": "driver:offline", "driver_id": ... }
-        { "type": "pickup:response", "order_id": ..., "driver_id": ..., "driver_name": ..., "accepted": ... }
-
-    Central → server messages:
-        { "type": "central:pickup:notify", "order_id": "...", "driver_id": "..." }
-
-    Server → Driver messages:
-        { "type": "pickup:notification", "order": {...}, "extra_minutes": ... }
-    """
+    # ── Autenticación ──────────────────────────────────────────────────────────
     try:
-        user = decode_token(token)
+        usuario = decodificar_token(token)
     except HTTPException:
+        # Token inválido → cerrar con código 1008 (Policy Violation)
         await websocket.close(code=1008)
         return
 
-    user_id: str = user["id"]
-    role: str = user["role"]
-    name: str = user["name"]
+    id_usuario: str = usuario["id"]
+    rol: str = usuario["role"]
+    nombre: str = usuario["name"]
 
-    if role == "repartidor":
-        await manager.connect_driver(user_id, websocket)
+    # ── Registro de la conexión según rol ──────────────────────────────────────
+    if rol == "repartidor":
+        await gestor.conectar_repartidor(id_usuario, websocket)
     else:
-        await manager.connect_central(websocket)
+        await gestor.conectar_central(websocket)
 
     try:
+        # Bucle principal: espera mensajes del cliente
         while True:
-            raw = await websocket.receive_text()
+            texto_raw = await websocket.receive_text()
             try:
-                msg = json.loads(raw)
+                mensaje = json.loads(texto_raw)
             except json.JSONDecodeError:
+                # Mensaje malformado → ignorar y continuar
                 continue
 
-            msg_type = msg.get("type")
+            tipo_mensaje = mensaje.get("type")
 
-            # ── Driver sends location update ───────────────────────────────
-            if msg_type == "driver:location" and role == "repartidor":
-                lat = msg.get("lat")
-                lng = msg.get("lng")
-                heading = msg.get("heading", 0)
+            # ── Repartidor envía actualización de ubicación ────────────────────
+            if tipo_mensaje == "driver:location" and rol == "repartidor":
+                lat = mensaje.get("lat")
+                lng = mensaje.get("lng")
+                direccion = mensaje.get("heading", 0)
 
+                # Validar que lat y lng sean números
                 if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
                     continue
 
-                conn = get_connection()
-                conn.execute(
+                # Guardar la nueva posición en la base de datos
+                conexion = obtener_conexion()
+                conexion.execute(
                     """
                     INSERT INTO driver_locations (driver_id, lat, lng, heading, updated_at)
                     VALUES (?, ?, ?, ?, datetime('now'))
@@ -75,130 +93,141 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                         heading = excluded.heading,
                         updated_at = excluded.updated_at
                     """,
-                    (user_id, lat, lng, heading),
+                    (id_usuario, lat, lng, direccion),
                 )
-                conn.commit()
+                conexion.commit()
 
-                await manager.broadcast_to_central({
+                # Notificar a todos los operadores centrales la nueva posición
+                await gestor.difundir_a_central({
                     "type": "driver:location:update",
-                    "driver_id": user_id,
-                    "name": name,
+                    "driver_id": id_usuario,
+                    "name": nombre,
                     "lat": lat,
                     "lng": lng,
-                    "heading": heading,
+                    "heading": direccion,
                 })
 
-            # ── Central pushes a pickup notification to a driver ───────────
-            elif msg_type == "central:pickup:notify" and role == "central":
-                order_id = msg.get("order_id")
-                driver_id = msg.get("driver_id")
-                if not order_id or not driver_id:
+            # ── Central asigna una recogida a un repartidor ────────────────────
+            elif tipo_mensaje == "central:pickup:notify" and rol == "central":
+                id_pedido = mensaje.get("order_id")
+                id_repartidor = mensaje.get("driver_id")
+                if not id_pedido or not id_repartidor:
                     continue
 
-                conn = get_connection()
-                order_row = conn.execute(
-                    "SELECT * FROM orders WHERE id = ?", (order_id,)
+                conexion = obtener_conexion()
+                fila_pedido = conexion.execute(
+                    "SELECT * FROM orders WHERE id = ?", (id_pedido,)
                 ).fetchone()
-                if not order_row:
+                if not fila_pedido:
                     continue
 
-                driver_loc = conn.execute(
-                    "SELECT * FROM driver_locations WHERE driver_id = ?", (driver_id,)
+                # Obtener posición actual y ruta activa del repartidor
+                ubicacion_rep = conexion.execute(
+                    "SELECT * FROM driver_locations WHERE driver_id = ?", (id_repartidor,)
                 ).fetchone()
-                active_route = conn.execute(
+                ruta_activa = conexion.execute(
                     "SELECT * FROM routes WHERE driver_id = ? AND status = 'active'",
-                    (driver_id,),
+                    (id_repartidor,),
                 ).fetchone()
 
-                extra_minutes = 0.0
-                if driver_loc and active_route:
-                    order_ids = json.loads(active_route["order_ids"])
-                    stops: list[dict] = []
-                    if order_ids:
-                        placeholders = ",".join("?" * len(order_ids))
-                        stops = [
-                            {"lat": r["lat"], "lng": r["lng"]}
-                            for r in conn.execute(
+                # Calcular el tiempo extra del desvío
+                minutos_extra = 0.0
+                if ubicacion_rep and ruta_activa:
+                    ids_pedidos = json.loads(ruta_activa["order_ids"])
+                    paradas: list[dict] = []
+                    if ids_pedidos:
+                        marcadores = ",".join("?" * len(ids_pedidos))
+                        paradas = [
+                            {"lat": fila["lat"], "lng": fila["lng"]}
+                            for fila in conexion.execute(
                                 f"SELECT lat, lng FROM orders "
-                                f"WHERE id IN ({placeholders}) "
+                                f"WHERE id IN ({marcadores}) "
                                 f"AND status NOT IN ('completed','rejected')",
-                                order_ids,
+                                ids_pedidos,
                             ).fetchall()
                         ]
-                    result = calculate_extra_time(
-                        stops,
-                        {"lat": driver_loc["lat"], "lng": driver_loc["lng"]},
-                        {"lat": order_row["lat"], "lng": order_row["lng"]},
+                    resultado = calcular_tiempo_extra(
+                        paradas,
+                        {"lat": ubicacion_rep["lat"], "lng": ubicacion_rep["lng"]},
+                        {"lat": fila_pedido["lat"], "lng": fila_pedido["lng"]},
                     )
-                    extra_minutes = result["extra_minutes"]
+                    minutos_extra = resultado["extra_minutos"]
 
-                conn.execute(
+                # Actualizar el pedido en la BD con el repartidor y el tiempo estimado
+                conexion.execute(
                     """
                     UPDATE orders
                     SET assigned_driver_id = ?, estimated_extra_minutes = ?,
                         status = 'assigned', updated_at = datetime('now')
                     WHERE id = ?
                     """,
-                    (driver_id, extra_minutes, order_id),
+                    (id_repartidor, minutos_extra, id_pedido),
                 )
-                conn.commit()
+                conexion.commit()
 
-                await manager.send_to_driver(driver_id, {
+                # Enviar la notificación de recogida al repartidor seleccionado
+                await gestor.enviar_a_repartidor(id_repartidor, {
                     "type": "pickup:notification",
-                    "order": dict(order_row),
-                    "extra_minutes": extra_minutes,
+                    "order": dict(fila_pedido),
+                    "extra_minutes": minutos_extra,
                 })
 
-            # ── Driver responds to a pickup notification ───────────────────
-            elif msg_type == "driver:pickup:response" and role == "repartidor":
-                order_id = msg.get("order_id")
-                accepted = msg.get("accepted")
-                if not order_id or accepted is None:
+            # ── Repartidor responde a una notificación de recogida ─────────────
+            elif tipo_mensaje == "driver:pickup:response" and rol == "repartidor":
+                id_pedido = mensaje.get("order_id")
+                aceptado = mensaje.get("accepted")
+                if not id_pedido or aceptado is None:
                     continue
 
-                conn = get_connection()
-                order_row = conn.execute(
-                    "SELECT * FROM orders WHERE id = ?", (order_id,)
+                conexion = obtener_conexion()
+                fila_pedido = conexion.execute(
+                    "SELECT * FROM orders WHERE id = ?", (id_pedido,)
                 ).fetchone()
-                if not order_row or order_row["assigned_driver_id"] != user_id:
+                # Solo procesar si el pedido existe y está asignado a este repartidor
+                if not fila_pedido or fila_pedido["assigned_driver_id"] != id_usuario:
                     continue
 
-                new_status = "in_progress" if accepted else "rejected"
-                conn.execute(
+                # Actualizar el estado del pedido según la respuesta
+                nuevo_estado = "in_progress" if aceptado else "rejected"
+                conexion.execute(
                     "UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?",
-                    (new_status, order_id),
+                    (nuevo_estado, id_pedido),
                 )
 
-                if accepted:
-                    active_route = conn.execute(
+                # Si aceptó, añadir la recogida a su ruta activa
+                if aceptado:
+                    ruta_activa = conexion.execute(
                         "SELECT * FROM routes WHERE driver_id = ? AND status = 'active'",
-                        (user_id,),
+                        (id_usuario,),
                     ).fetchone()
-                    if active_route:
-                        ids = json.loads(active_route["order_ids"])
-                        if order_id not in ids:
-                            ids.append(order_id)
-                            conn.execute(
+                    if ruta_activa:
+                        ids = json.loads(ruta_activa["order_ids"])
+                        if id_pedido not in ids:
+                            ids.append(id_pedido)
+                            conexion.execute(
                                 "UPDATE routes SET order_ids = ?, updated_at = datetime('now') WHERE id = ?",
-                                (json.dumps(ids), active_route["id"]),
+                                (json.dumps(ids), ruta_activa["id"]),
                             )
 
-                conn.commit()
+                conexion.commit()
 
-                await manager.broadcast_to_central({
+                # Informar a la central del resultado de la notificación
+                await gestor.difundir_a_central({
                     "type": "pickup:response",
-                    "order_id": order_id,
-                    "driver_id": user_id,
-                    "driver_name": name,
-                    "accepted": accepted,
+                    "order_id": id_pedido,
+                    "driver_id": id_usuario,
+                    "driver_name": nombre,
+                    "accepted": aceptado,
                 })
 
     except WebSocketDisconnect:
-        if role == "repartidor":
-            manager.disconnect_driver(user_id)
-            await manager.broadcast_to_central({
+        # ── Limpieza al desconectarse ──────────────────────────────────────────
+        if rol == "repartidor":
+            gestor.desconectar_repartidor(id_usuario)
+            # Notificar a la central que el repartidor se desconectó
+            await gestor.difundir_a_central({
                 "type": "driver:offline",
-                "driver_id": user_id,
+                "driver_id": id_usuario,
             })
         else:
-            manager.disconnect_central(websocket)
+            gestor.desconectar_central(websocket)

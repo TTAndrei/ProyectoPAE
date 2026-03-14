@@ -1,41 +1,58 @@
-"""Authentication router."""
+"""Router de autenticación: login y consulta del usuario actual.
+
+Endpoints:
+  POST /auth/login  → Autentica al usuario y devuelve un token JWT
+  GET  /auth/yo     → Devuelve los datos del usuario autenticado
+"""
 from fastapi import APIRouter, HTTPException, status, Depends
 
-from app.database import get_connection
-from app.schemas import LoginRequest, TokenResponse, UserOut
-from app.auth import pwd_ctx, create_access_token, get_current_user
+from app.database import obtener_conexion
+from app.schemas import SolicitudLogin, RespuestaToken, UsuarioRespuesta
+from app.auth import contexto_contrasena, crear_token_acceso, obtener_usuario_actual
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+# Enrutador de autenticación con prefijo /auth
+enrutador = APIRouter(prefix="/auth", tags=["autenticación"])
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest):
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM users WHERE username = ?", (body.username,)
+@enrutador.post("/login", response_model=RespuestaToken)
+def iniciar_sesion(cuerpo: SolicitudLogin):
+    """Verifica las credenciales del usuario y devuelve un token JWT.
+
+    El token debe incluirse en todas las peticiones posteriores en el
+    encabezado HTTP: Authorization: Bearer <token>
+
+    Raises:
+        HTTPException 401: Si el usuario no existe o la contraseña es incorrecta.
+    """
+    conexion = obtener_conexion()
+    fila = conexion.execute(
+        "SELECT * FROM users WHERE username = ?", (cuerpo.username,)
     ).fetchone()
 
-    if not row or not pwd_ctx.verify(body.password, row["password_hash"]):
+    # Verificar existencia del usuario y correctitud de la contraseña (bcrypt)
+    if not fila or not contexto_contrasena.verify(cuerpo.password, fila["password_hash"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail="Usuario o contraseña incorrectos",
         )
 
-    user_data = {
-        "id": row["id"],
-        "username": row["username"],
-        "role": row["role"],
-        "name": row["name"],
+    # Construir los datos que se almacenarán en el token JWT
+    datos_usuario = {
+        "id": fila["id"],
+        "username": fila["username"],
+        "role": fila["role"],
+        "name": fila["name"],
     }
-    token = create_access_token(user_data)
-    return TokenResponse(token=token, user=UserOut(**user_data))
+    token = crear_token_acceso(datos_usuario)
+    return RespuestaToken(token=token, user=UsuarioRespuesta(**datos_usuario))
 
 
-@router.get("/me", response_model=UserOut)
-def me(current_user: dict = Depends(get_current_user)):
-    return UserOut(
-        id=current_user["id"],
-        username=current_user["username"],
-        role=current_user["role"],
-        name=current_user["name"],
+@enrutador.get("/me", response_model=UsuarioRespuesta)
+def obtener_yo(usuario_actual: dict = Depends(obtener_usuario_actual)):
+    """Devuelve los datos del usuario cuyo token se proporciona en la petición."""
+    return UsuarioRespuesta(
+        id=usuario_actual["id"],
+        username=usuario_actual["username"],
+        role=usuario_actual["role"],
+        name=usuario_actual["name"],
     )
