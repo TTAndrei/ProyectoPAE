@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PAE – Gestión de Rutas</title>
+
+  <!-- Leaflet CSS (local) -->
+  <link rel="stylesheet" href="/vendor/leaflet.css" />
+
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<!-- ── Login screen ──────────────────────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>🚐 PAE</h1>
+    <p class="subtitle">Gestión de rutas y recogidas de última milla</p>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="username">Usuario</label>
+        <input id="username" type="text" placeholder="central / driver1 / driver2" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Contraseña</label>
+        <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn-primary">Iniciar sesión</button>
+      <p id="login-error" class="login-error"></p>
+    </form>
+    <p style="margin-top:1.5rem;font-size:.78rem;color:#a0aec0;text-align:center;">
+      Demo: <code>central / central123</code> &nbsp;·&nbsp; <code>driver1 / driver123</code>
+    </p>
+  </div>
+</div>
+
+<!-- ── App shell ──────────────────────────────────────────────────────────── -->
+<div id="app-screen">
+  <nav>
+    <span class="brand">🚐 PAE – Gestión de Rutas</span>
+    <div style="display:flex;align-items:center;gap:.75rem;">
+      <span class="user-info" id="nav-user"></span>
+      <button class="btn-logout" id="btn-logout">Cerrar sesión</button>
+    </div>
+  </nav>
+
+  <div class="main-content">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header" id="sidebar-title">Ruta actual</div>
+      <div class="sidebar-body" id="sidebar-body"></div>
+    </aside>
+
+    <!-- Map -->
+    <div id="map"></div>
+  </div>
+</div>
+
+<!-- ── Pickup notification modal ─────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="pickup-modal">
+  <div class="modal">
+    <h2>📦 Nueva recogida disponible</h2>
+    <p>Se ha detectado una recogida en tu zona:</p>
+    <p class="modal-address" id="modal-address"></p>
+    <div class="extra-time" id="modal-extra-time"></div>
+    <p style="font-size:.85rem;color:#718096;margin-bottom:1rem;">
+      ¿Deseas añadir esta parada a tu ruta actual?
+    </p>
+    <div class="modal-actions">
+      <button class="btn-accept" id="btn-accept-pickup">✅ Aceptar</button>
+      <button class="btn-reject" id="btn-reject-pickup">❌ Rechazar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast container ────────────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- Leaflet JS (local) -->
+<script src="/vendor/leaflet.js"></script>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
