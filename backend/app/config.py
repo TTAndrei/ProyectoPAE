@@ -15,6 +15,11 @@ RUTA_BD: str = os.getenv("DB_PATH", "pae.db")
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
 # Orígenes permitidos para peticiones cross-origin (separados por coma)
-ORIGENES_CORS: list[str] = os.getenv(
-    "CORS_ORIGINS", "http://localhost:3000"
-).split(",")
+ORIGENES_CORS: list[str] = [
+    origen.strip()
+    for origen in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080",
+    ).split(",")
+    if origen.strip()
+]

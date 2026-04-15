@@ -1,0 +1,80 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+typedef WsMessageHandler = void Function(Map<String, dynamic> message);
+
+class WsService {
+  WebSocketChannel? _channel;
+  StreamSubscription<dynamic>? _subscription;
+
+  bool get isConnected => _channel != null;
+
+  void connect({
+    required String apiBaseUrl,
+    required String token,
+    required WsMessageHandler onMessage,
+    void Function(Object error)? onError,
+    void Function()? onDone,
+  }) {
+    _subscription?.cancel();
+    _subscription = null;
+    _channel?.sink.close();
+    _channel = null;
+
+    final uri = _buildWsUri(apiBaseUrl: apiBaseUrl, token: token);
+    _channel = WebSocketChannel.connect(uri);
+
+    _subscription = _channel!.stream.listen(
+      (dynamic rawMessage) {
+        if (rawMessage is! String) {
+          return;
+        }
+        try {
+          final decoded = jsonDecode(rawMessage);
+          if (decoded is Map<String, dynamic>) {
+            onMessage(decoded);
+          } else if (decoded is Map) {
+            onMessage(Map<String, dynamic>.from(decoded));
+          }
+        } catch (_) {
+          // Ignore invalid payloads.
+        }
+      },
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: false,
+    );
+  }
+
+  void send(Map<String, dynamic> payload) {
+    final channel = _channel;
+    if (channel == null) {
+      return;
+    }
+    channel.sink.add(jsonEncode(payload));
+  }
+
+  Future<void> disconnect() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    await _channel?.sink.close();
+    _channel = null;
+  }
+
+  Uri _buildWsUri({
+    required String apiBaseUrl,
+    required String token,
+  }) {
+    final baseUri = Uri.parse(apiBaseUrl);
+    final scheme = baseUri.scheme == 'https' ? 'wss' : 'ws';
+    return Uri(
+      scheme: scheme,
+      host: baseUri.host,
+      port: baseUri.hasPort ? baseUri.port : null,
+      path: '/ws',
+      queryParameters: {'token': token},
+    );
+  }
+}

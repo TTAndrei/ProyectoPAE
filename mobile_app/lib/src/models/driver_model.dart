@@ -1,0 +1,51 @@
+double? _asNullableDouble(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is num) {
+    return value.toDouble();
+  }
+  if (value is String) {
+    return double.tryParse(value);
+  }
+  return null;
+}
+
+class DriverModel {
+  const DriverModel({
+    required this.id,
+    required this.username,
+    required this.name,
+    this.lat,
+    this.lng,
+    this.heading,
+    this.locationUpdatedAt,
+  });
+
+  final String id;
+  final String username;
+  final String name;
+  final double? lat;
+  final double? lng;
+  final double? heading;
+  final String? locationUpdatedAt;
+
+  String get shortLocation {
+    if (lat == null || lng == null) {
+      return 'No location';
+    }
+    return '${lat!.toStringAsFixed(5)}, ${lng!.toStringAsFixed(5)}';
+  }
+
+  factory DriverModel.fromJson(Map<String, dynamic> json) {
+    return DriverModel(
+      id: json['id']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      lat: _asNullableDouble(json['lat']),
+      lng: _asNullableDouble(json['lng']),
+      heading: _asNullableDouble(json['heading']),
+      locationUpdatedAt: json['location_updated_at']?.toString(),
+    );
+  }
+}

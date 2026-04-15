@@ -5,10 +5,8 @@ configura la instancia FastAPI. Esto facilita las pruebas (cada test puede
 obtener una instancia fresca) y la reutilización con distintas configuraciones.
 """
 from contextlib import asynccontextmanager
-from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.config import ORIGENES_CORS
 from app.database import inicializar_bd
@@ -16,9 +14,6 @@ from app.routers.auth import enrutador as enrutador_auth
 from app.routers.drivers import enrutador as enrutador_repartidores
 from app.routers.orders import enrutador as enrutador_pedidos
 from app.routers.ws import enrutador as enrutador_ws
-
-# Directorio donde se sirve el frontend estático (HTML/CSS/JS)
-DIRECTORIO_ESTATICO = Path(__file__).parent.parent / "static"
 
 
 def crear_aplicacion() -> FastAPI:
@@ -28,7 +23,6 @@ def crear_aplicacion() -> FastAPI:
       1. Se inicializa la base de datos SQLite (tablas + datos demo)
       2. Se registran los middleware CORS
       3. Se incluyen los routers de la API
-      4. Se sirve el frontend estático desde /static
 
     Returns:
         Instancia FastAPI completamente configurada.
@@ -72,14 +66,6 @@ def crear_aplicacion() -> FastAPI:
     def verificar_estado():
         """Endpoint de comprobación de salud del servidor."""
         return {"status": "ok"}
-
-    # Servir el frontend (HTML/CSS/JS) desde el directorio static/
-    if DIRECTORIO_ESTATICO.exists():
-        aplicacion.mount(
-            "/",
-            StaticFiles(directory=str(DIRECTORIO_ESTATICO), html=True),
-            name="estatico",
-        )
 
     return aplicacion
 

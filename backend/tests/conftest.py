@@ -26,13 +26,18 @@ def base_de_datos_prueba():
     Se usa scope='session' para evitar reinicializar la BD en cada test,
     lo que aceleraría considerablemente la ejecución de la suite.
     """
-    from app.database import inicializar_bd
+    from app.database import inicializar_bd, cerrar_conexion
     inicializar_bd()
     yield RUTA_BD_TEMPORAL
+    # Cerrar la conexión SQLite para liberar el archivo en Windows.
+    try:
+        cerrar_conexion()
+    except Exception:
+        pass
     # Limpieza: eliminar el archivo temporal al terminar
     try:
         os.unlink(RUTA_BD_TEMPORAL)
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError):
         pass
 
 
