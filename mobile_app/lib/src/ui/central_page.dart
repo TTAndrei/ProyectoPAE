@@ -44,6 +44,7 @@ class _CentralPageState extends State<CentralPage> {
 
   List<DriverModel> _drivers = const [];
   List<OrderModel> _orders = const [];
+  Map<String, DriverRoutePlan> _routePlansByDriver = const {};
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -113,6 +114,55 @@ class _CentralPageState extends State<CentralPage> {
     });
   }
 
+  bool _isSparseRouteGeometry(DriverRoutePlan plan) {
+    if (plan.routeGeometry.length < 2) {
+      return true;
+    }
+    final minimumWaypointCount =
+        plan.orders.isEmpty ? 0 : plan.orders.length + 1;
+    return plan.routeGeometry.length <= minimumWaypointCount;
+  }
+
+  DriverRoutePlan _preferStreetGeometry({
+    required DriverRoutePlan incoming,
+    DriverRoutePlan? current,
+  }) {
+    if (current == null) {
+      return incoming;
+    }
+
+    final incomingSparse = _isSparseRouteGeometry(incoming);
+    final currentLooksStreet = !_isSparseRouteGeometry(current);
+
+    if (incomingSparse && currentLooksStreet) {
+      return DriverRoutePlan(
+        orders: incoming.orders,
+        totalMinutes: incoming.totalMinutes,
+        totalDistanceKm: incoming.totalDistanceKm,
+        routeGeometry: current.routeGeometry,
+        legMinutes: incoming.legMinutes.isNotEmpty
+            ? incoming.legMinutes
+            : current.legMinutes,
+      );
+    }
+
+    return incoming;
+  }
+
+  Map<String, DriverRoutePlan> _mergeRoutePlans(
+    Map<String, DriverRoutePlan> current,
+    Map<String, DriverRoutePlan> incoming,
+  ) {
+    final merged = <String, DriverRoutePlan>{};
+    for (final entry in incoming.entries) {
+      merged[entry.key] = _preferStreetGeometry(
+        incoming: entry.value,
+        current: current[entry.key],
+      );
+    }
+    return merged;
+  }
+
   Future<void> _loadData({bool showLoader = true}) async {
     if (showLoader && mounted) {
       setState(() {
@@ -130,9 +180,55 @@ class _CentralPageState extends State<CentralPage> {
         return;
       }
 
+      final drivers = results[0] as List<DriverModel>;
+      final orders = results[1] as List<OrderModel>;
+
+      final activeDriverIds = orders
+          .where(
+            (order) =>
+                order.assignedDriverId != null &&
+                order.status != 'completed' &&
+                order.status != 'rejected',
+          )
+          .map((order) => order.assignedDriverId!)
+          .toSet()
+          .toList()
+        ..sort();
+
+      final incomingRoutePlans = <String, DriverRoutePlan>{};
+      if (activeDriverIds.isNotEmpty) {
+        final planEntries =
+            await Future.wait<MapEntry<String, DriverRoutePlan>?>(
+          activeDriverIds.map((driverId) async {
+            try {
+              final plan = await _api.getRoutePlan(
+                token: widget.token,
+                driverId: driverId,
+              );
+              return MapEntry(driverId, plan);
+            } catch (_) {
+              return null;
+            }
+          }),
+        );
+
+        for (final entry in planEntries) {
+          if (entry == null) {
+            continue;
+          }
+          incomingRoutePlans[entry.key] = entry.value;
+        }
+      }
+
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
-        _drivers = results[0] as List<DriverModel>;
-        _orders = results[1] as List<OrderModel>;
+        _drivers = drivers;
+        _orders = orders;
+        _routePlansByDriver =
+            _mergeRoutePlans(_routePlansByDriver, incomingRoutePlans);
         _error = null;
       });
     } catch (error) {
@@ -469,6 +565,9 @@ class _CentralPageState extends State<CentralPage> {
       for (final driver in driversWithLocation)
         LatLng(driver.lat!, driver.lng!),
       for (final order in activeAssignedOrders) LatLng(order.lat, order.lng),
+      for (final plan in _routePlansByDriver.values)
+        if (!_isSparseRouteGeometry(plan))
+          ...plan.routeGeometry.map((point) => LatLng(point.lat, point.lng)),
     ];
 
     if (points.isEmpty) {
@@ -484,20 +583,25 @@ class _CentralPageState extends State<CentralPage> {
     final polylines = <Polyline>[];
     for (final driver in driversWithLocation) {
       final color = driverColors[driver.id] ?? _driverPalette.first;
-      final driverPoint = LatLng(driver.lat!, driver.lng!);
-      final ordersForDriver = activeAssignedOrders
-          .where((order) => order.assignedDriverId == driver.id)
-          .toList();
-
-      for (final order in ordersForDriver) {
-        polylines.add(
-          Polyline(
-            points: [driverPoint, LatLng(order.lat, order.lng)],
-            color: color.withValues(alpha: 0.35),
-            strokeWidth: 2.3,
-          ),
-        );
+      final plan = _routePlansByDriver[driver.id];
+      if (plan == null || _isSparseRouteGeometry(plan)) {
+        continue;
       }
+
+      final routePoints = plan.routeGeometry
+          .map((point) => LatLng(point.lat, point.lng))
+          .toList();
+      if (routePoints.length < 2) {
+        continue;
+      }
+
+      polylines.add(
+        Polyline(
+          points: routePoints,
+          color: color.withValues(alpha: 0.35),
+          strokeWidth: 2.3,
+        ),
+      );
     }
 
     final markers = <Marker>[

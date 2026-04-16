@@ -7,7 +7,12 @@ Cubre los tres componentes principales:
 """
 import math
 import pytest
-from app.routing import distancia_haversine_km, estimar_minutos, calcular_tiempo_extra
+from app.routing import (
+    distancia_haversine_km,
+    estimar_minutos,
+    calcular_tiempo_extra,
+    optimizar_ruta,
+)
 
 
 def test_haversine_mismo_punto():
@@ -84,3 +89,20 @@ def test_calcular_tiempo_extra_indice_insercion_valido():
     nueva_parada = {"lat": 40.415, "lng": -3.705}
     resultado = calcular_tiempo_extra(paradas, posicion_repartidor, nueva_parada)
     assert resultado["indice_insercion"] >= 0
+
+
+def test_optimizar_ruta_devuelve_orden_y_metricas_validas():
+    """El optimizador debe devolver todas las paradas con tiempo/distancia válidos."""
+    posicion_repartidor = {"lat": 40.4168, "lng": -3.7038}
+    paradas = [
+        {"id": "a", "lat": 40.4356, "lng": -3.6882},
+        {"id": "b", "lat": 40.4238, "lng": -3.6797},
+        {"id": "c", "lat": 40.4277, "lng": -3.7025},
+    ]
+
+    resultado = optimizar_ruta(paradas, posicion_repartidor)
+    ids_resultado = [parada["id"] for parada in resultado["paradas_ordenadas"]]
+
+    assert sorted(ids_resultado) == ["a", "b", "c"]
+    assert resultado["distancia_km"] >= 0
+    assert resultado["minutos_totales"] >= 0

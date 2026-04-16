@@ -18,7 +18,8 @@ from app.schemas import (
     ActualizarEstadoPedido, PedidoRespuesta, RutaRespuesta,
 )
 from app.auth import obtener_usuario_actual, requerir_central
-from app.routing import calcular_tiempo_extra
+from app.config import OSRM_ACTIVO, OSRM_BASE_URL, OSRM_TIMEOUT_SEGUNDOS
+from app.routing import calcular_tiempo_extra, optimizar_ruta_vial
 
 # Enrutador de pedidos con prefijo /orders
 enrutador = APIRouter(prefix="/orders", tags=["pedidos"])
@@ -27,6 +28,80 @@ enrutador = APIRouter(prefix="/orders", tags=["pedidos"])
 def _fila_a_pedido(fila) -> dict:
     """Convierte una fila SQLite en un diccionario Python."""
     return dict(fila)
+
+
+def _obtener_posicion_repartidor(conexion, id_repartidor: str) -> dict | None:
+    """Devuelve la ubicación actual del repartidor o None si no existe."""
+    fila = conexion.execute(
+        "SELECT lat, lng FROM driver_locations WHERE driver_id = ?",
+        (id_repartidor,),
+    ).fetchone()
+    if not fila:
+        return None
+    return {"lat": fila["lat"], "lng": fila["lng"]}
+
+
+def _obtener_paradas_activas(conexion, id_repartidor: str) -> list[dict]:
+    """Obtiene pedidos activos del repartidor aptos para cálculo de ruta."""
+    filas = conexion.execute(
+        """
+        SELECT id, lat, lng
+        FROM orders
+        WHERE assigned_driver_id = ?
+          AND status IN ('assigned','in_progress')
+        """,
+        (id_repartidor,),
+    ).fetchall()
+    return [dict(fila) for fila in filas]
+
+
+def _plan_ruta_repartidor(conexion, id_repartidor: str) -> dict:
+    """Calcula orden óptimo y métricas de ruta activa del repartidor."""
+    paradas = _obtener_paradas_activas(conexion, id_repartidor)
+    if not paradas:
+        return {
+            "order_ids": [],
+            "total_minutes": 0.0,
+            "total_distance_km": 0.0,
+            "route_geometry": [],
+            "leg_minutes": [],
+        }
+
+    posicion = _obtener_posicion_repartidor(conexion, id_repartidor)
+    if not posicion:
+        # Fallback para no bloquear el algoritmo cuando todavía no hay GPS.
+        posicion = {"lat": paradas[0]["lat"], "lng": paradas[0]["lng"]}
+
+    optimizada = optimizar_ruta_vial(
+        paradas,
+        posicion,
+        osrm_base_url=OSRM_BASE_URL if OSRM_ACTIVO else None,
+        timeout_seconds=OSRM_TIMEOUT_SEGUNDOS,
+    )
+    order_ids = [parada["id"] for parada in optimizada["paradas_ordenadas"]]
+
+    return {
+        "order_ids": order_ids,
+        "total_minutes": optimizada["minutos_totales"],
+        "total_distance_km": optimizada["distancia_km"],
+        "route_geometry": optimizada["route_geometry"],
+        "leg_minutes": optimizada["leg_minutes"],
+    }
+
+
+def _persistir_orden_ruta_activa(conexion, id_repartidor: str, order_ids: list[str]) -> None:
+    """Guarda en routes.order_ids el orden optimizado actual."""
+    ruta = conexion.execute(
+        "SELECT id FROM routes WHERE driver_id = ? AND status = 'active'",
+        (id_repartidor,),
+    ).fetchone()
+    if not ruta:
+        return
+
+    conexion.execute(
+        "UPDATE routes SET order_ids = ?, updated_at = datetime('now') WHERE id = ?",
+        (json.dumps(order_ids), ruta["id"]),
+    )
 
 
 @enrutador.get("/", response_model=list[PedidoRespuesta])
@@ -97,39 +172,26 @@ def asignar_pedido(
     if not pedido:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
 
-    # Obtener posición actual del repartidor
-    ubicacion_repartidor = conexion.execute(
-        "SELECT * FROM driver_locations WHERE driver_id = ?", (cuerpo.driver_id,)
-    ).fetchone()
+    posicion_repartidor = _obtener_posicion_repartidor(conexion, cuerpo.driver_id)
+    paradas_activas = _obtener_paradas_activas(conexion, cuerpo.driver_id)
 
-    # Obtener la ruta activa del repartidor
-    ruta_activa = conexion.execute(
-        "SELECT * FROM routes WHERE driver_id = ? AND status = 'active'",
-        (cuerpo.driver_id,),
-    ).fetchone()
+    if not posicion_repartidor:
+        if paradas_activas:
+            posicion_repartidor = {
+                "lat": paradas_activas[0]["lat"],
+                "lng": paradas_activas[0]["lng"],
+            }
+        else:
+            posicion_repartidor = {"lat": pedido["lat"], "lng": pedido["lng"]}
 
-    # Calcular el tiempo extra de desvío si hay ubicación y ruta disponibles
-    minutos_extra = 0.0
-    if ubicacion_repartidor and ruta_activa:
-        ids_pedidos = json.loads(ruta_activa["order_ids"])
-        paradas: list[dict] = []
-        if ids_pedidos:
-            marcadores = ",".join("?" * len(ids_pedidos))
-            paradas = [
-                dict(fila)
-                for fila in conexion.execute(
-                    f"SELECT lat, lng FROM orders "
-                    f"WHERE id IN ({marcadores}) "
-                    f"AND status NOT IN ('completed','rejected')",
-                    ids_pedidos,
-                ).fetchall()
-            ]
-        resultado = calcular_tiempo_extra(
-            paradas,
-            {"lat": ubicacion_repartidor["lat"], "lng": ubicacion_repartidor["lng"]},
-            {"lat": pedido["lat"], "lng": pedido["lng"]},
-        )
-        minutos_extra = resultado["extra_minutos"]
+    resultado = calcular_tiempo_extra(
+        paradas_activas,
+        posicion_repartidor,
+        {"id": id_pedido, "lat": pedido["lat"], "lng": pedido["lng"]},
+        osrm_base_url=OSRM_BASE_URL if OSRM_ACTIVO else None,
+        timeout_seconds=OSRM_TIMEOUT_SEGUNDOS,
+    )
+    minutos_extra = resultado["extra_minutos"]
 
     # Actualizar el pedido con el repartidor asignado y el tiempo estimado
     conexion.execute(
@@ -141,10 +203,21 @@ def asignar_pedido(
         """,
         (cuerpo.driver_id, minutos_extra, id_pedido),
     )
+    plan = _plan_ruta_repartidor(conexion, cuerpo.driver_id)
+    _persistir_orden_ruta_activa(conexion, cuerpo.driver_id, plan["order_ids"])
+
     conexion.commit()
 
     actualizado = conexion.execute("SELECT * FROM orders WHERE id = ?", (id_pedido,)).fetchone()
-    return {"order": _fila_a_pedido(actualizado), "extra_minutes": minutos_extra}
+    return {
+        "order": _fila_a_pedido(actualizado),
+        "extra_minutes": minutos_extra,
+        "total_minutes": plan["total_minutes"],
+        "total_distance_km": plan["total_distance_km"],
+        "route_order_ids": plan["order_ids"],
+        "route_geometry": plan["route_geometry"],
+        "leg_minutes": plan["leg_minutes"],
+    }
 
 
 @enrutador.post("/{id_pedido}/respond")
@@ -175,6 +248,8 @@ def responder_pedido(
     if pedido["assigned_driver_id"] != usuario_actual["id"]:
         raise HTTPException(status_code=403, detail="Este pedido no está asignado a ti")
 
+    minutos_extra = float(pedido["estimated_extra_minutes"] or 0.0) if cuerpo.accepted else 0.0
+
     # Determinar el nuevo estado según la respuesta del repartidor
     nuevo_estado = "in_progress" if cuerpo.accepted else "rejected"
     conexion.execute(
@@ -182,24 +257,20 @@ def responder_pedido(
         (nuevo_estado, id_pedido),
     )
 
-    # Si aceptó, añadir el pedido a su ruta activa
-    if cuerpo.accepted:
-        ruta_activa = conexion.execute(
-            "SELECT * FROM routes WHERE driver_id = ? AND status = 'active'",
-            (usuario_actual["id"],),
-        ).fetchone()
-        if ruta_activa:
-            ids = json.loads(ruta_activa["order_ids"])
-            if id_pedido not in ids:
-                ids.append(id_pedido)
-                conexion.execute(
-                    "UPDATE routes SET order_ids = ?, updated_at = datetime('now') WHERE id = ?",
-                    (json.dumps(ids), ruta_activa["id"]),
-                )
+    plan = _plan_ruta_repartidor(conexion, usuario_actual["id"])
+    _persistir_orden_ruta_activa(conexion, usuario_actual["id"], plan["order_ids"])
 
     conexion.commit()
     actualizado = conexion.execute("SELECT * FROM orders WHERE id = ?", (id_pedido,)).fetchone()
-    return {"order": _fila_a_pedido(actualizado)}
+    return {
+        "order": _fila_a_pedido(actualizado),
+        "extra_minutes": round(minutos_extra, 1),
+        "total_minutes": plan["total_minutes"],
+        "total_distance_km": plan["total_distance_km"],
+        "route_order_ids": plan["order_ids"],
+        "route_geometry": plan["route_geometry"],
+        "leg_minutes": plan["leg_minutes"],
+    }
 
 
 @enrutador.patch("/{id_pedido}/status")
@@ -231,9 +302,35 @@ def actualizar_estado_pedido(
         "UPDATE orders SET status = ?, updated_at = datetime('now') WHERE id = ?",
         (cuerpo.status, id_pedido),
     )
+
+    total_minutes = 0.0
+    total_distance_km = 0.0
+    route_order_ids: list[str] = []
+    route_geometry: list[dict] = []
+    leg_minutes: list[float] = []
+    if pedido["assigned_driver_id"]:
+        plan = _plan_ruta_repartidor(conexion, pedido["assigned_driver_id"])
+        _persistir_orden_ruta_activa(
+            conexion,
+            pedido["assigned_driver_id"],
+            plan["order_ids"],
+        )
+        total_minutes = plan["total_minutes"]
+        total_distance_km = plan["total_distance_km"]
+        route_order_ids = plan["order_ids"]
+        route_geometry = plan["route_geometry"]
+        leg_minutes = plan["leg_minutes"]
+
     conexion.commit()
     actualizado = conexion.execute("SELECT * FROM orders WHERE id = ?", (id_pedido,)).fetchone()
-    return {"order": _fila_a_pedido(actualizado)}
+    return {
+        "order": _fila_a_pedido(actualizado),
+        "total_minutes": total_minutes,
+        "total_distance_km": total_distance_km,
+        "route_order_ids": route_order_ids,
+        "route_geometry": route_geometry,
+        "leg_minutes": leg_minutes,
+    }
 
 
 @enrutador.get("/route/{id_repartidor}", response_model=RutaRespuesta)
@@ -268,16 +365,28 @@ def obtener_ruta_repartidor(
     if not ruta:
         raise HTTPException(status_code=404, detail="No se encontró ruta activa")
 
-    # Obtener los objetos completos de cada pedido en el orden de la ruta
-    ids_pedidos = json.loads(ruta["order_ids"])
+    plan = _plan_ruta_repartidor(conexion, id_repartidor)
+    ids_pedidos = plan["order_ids"]
+    _persistir_orden_ruta_activa(conexion, id_repartidor, ids_pedidos)
+
+    # Obtener los objetos completos de cada pedido en el orden optimizado
     pedidos: list[dict] = []
     if ids_pedidos:
         marcadores = ",".join("?" * len(ids_pedidos))
-        pedidos = [
-            _fila_a_pedido(fila)
-            for fila in conexion.execute(
-                f"SELECT * FROM orders WHERE id IN ({marcadores})", ids_pedidos
-            ).fetchall()
-        ]
+        filas = conexion.execute(
+            f"SELECT * FROM orders WHERE id IN ({marcadores})", ids_pedidos
+        ).fetchall()
+        por_id = {fila["id"]: _fila_a_pedido(fila) for fila in filas}
+        pedidos = [por_id[id_pedido] for id_pedido in ids_pedidos if id_pedido in por_id]
 
-    return {**dict(ruta), "orders": pedidos}
+    conexion.commit()
+
+    return {
+        **dict(ruta),
+        "order_ids": json.dumps(ids_pedidos),
+        "orders": pedidos,
+        "total_minutes": plan["total_minutes"],
+        "total_distance_km": plan["total_distance_km"],
+        "route_geometry": plan["route_geometry"],
+        "leg_minutes": plan["leg_minutes"],
+    }

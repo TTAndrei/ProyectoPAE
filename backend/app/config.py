@@ -31,3 +31,14 @@ REGEX_ORIGEN_CORS: str = os.getenv(
     "CORS_ORIGIN_REGEX",
     r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
 )
+
+# ── Routing vial (OSRM) ───────────────────────────────────────────────────────
+# Endpoint OSRM para obtener rutas reales por calles.
+OSRM_BASE_URL: str = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org")
+# Timeout de red para llamadas OSRM.
+OSRM_TIMEOUT_SEGUNDOS: float = float(os.getenv("OSRM_TIMEOUT_SECONDS", "2.0"))
+# Se desactiva automaticamente durante tests para evitar dependencia externa.
+OSRM_ACTIVO: bool = (
+    os.getenv("OSRM_ENABLED", "1") == "1"
+    and "PYTEST_CURRENT_TEST" not in os.environ
+)

@@ -266,7 +266,7 @@ class ApiClient {
     return AssignOrderResult.fromJson(Map<String, dynamic>.from(decoded));
   }
 
-  Future<OrderModel> respondOrder({
+  Future<RespondOrderResult> respondOrder({
     required String token,
     required String orderId,
     required bool accepted,
@@ -281,9 +281,7 @@ class ApiClient {
     if (decoded is! Map || decoded['order'] is! Map) {
       throw const ApiException('Invalid respond response format');
     }
-    return OrderModel.fromJson(
-      Map<String, dynamic>.from(decoded['order'] as Map),
-    );
+    return RespondOrderResult.fromJson(Map<String, dynamic>.from(decoded));
   }
 
   Future<OrderModel> updateOrderStatus({
@@ -306,7 +304,7 @@ class ApiClient {
     );
   }
 
-  Future<List<OrderModel>> getRouteOrders({
+  Future<DriverRoutePlan> getRoutePlan({
     required String token,
     required String driverId,
   }) async {
@@ -320,15 +318,15 @@ class ApiClient {
       throw const ApiException('Invalid route response format');
     }
 
-    final rawOrders = decoded['orders'];
-    if (rawOrders is! List) {
-      return const [];
-    }
+    return DriverRoutePlan.fromJson(Map<String, dynamic>.from(decoded));
+  }
 
-    return rawOrders
-        .map(
-            (raw) => OrderModel.fromJson(Map<String, dynamic>.from(raw as Map)))
-        .toList();
+  Future<List<OrderModel>> getRouteOrders({
+    required String token,
+    required String driverId,
+  }) async {
+    final plan = await getRoutePlan(token: token, driverId: driverId);
+    return plan.orders;
   }
 
   Future<void> updateDriverLocation({

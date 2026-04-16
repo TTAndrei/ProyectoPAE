@@ -43,6 +43,8 @@ class _DriverPageState extends State<DriverPage> {
   List<OrderModel> _orders = const [];
   List<OrderModel> _routeOrders = const [];
   DriverLocation? _driverLocation;
+  DriverRoutePlan? _routePlan;
+  double? _lastAcceptedExtraMinutes;
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -123,6 +125,41 @@ class _DriverPageState extends State<DriverPage> {
     });
   }
 
+  bool _isSparseRouteGeometry(DriverRoutePlan plan) {
+    if (plan.routeGeometry.length < 2) {
+      return true;
+    }
+    final minimumWaypointCount =
+        plan.orders.isEmpty ? 0 : plan.orders.length + 1;
+    return plan.routeGeometry.length <= minimumWaypointCount;
+  }
+
+  DriverRoutePlan _preferStreetGeometry({
+    required DriverRoutePlan incoming,
+    DriverRoutePlan? current,
+  }) {
+    if (current == null) {
+      return incoming;
+    }
+
+    final incomingSparse = _isSparseRouteGeometry(incoming);
+    final currentLooksStreet = !_isSparseRouteGeometry(current);
+
+    if (incomingSparse && currentLooksStreet) {
+      return DriverRoutePlan(
+        orders: incoming.orders,
+        totalMinutes: incoming.totalMinutes,
+        totalDistanceKm: incoming.totalDistanceKm,
+        routeGeometry: current.routeGeometry,
+        legMinutes: incoming.legMinutes.isNotEmpty
+            ? incoming.legMinutes
+            : current.legMinutes,
+      );
+    }
+
+    return incoming;
+  }
+
   Future<void> _loadData({bool showLoader = true}) async {
     if (showLoader && mounted) {
       setState(() {
@@ -133,7 +170,7 @@ class _DriverPageState extends State<DriverPage> {
     try {
       final results = await Future.wait<dynamic>([
         _api.getOrders(token: widget.token),
-        _api.getRouteOrders(token: widget.token, driverId: widget.user.id),
+        _api.getRoutePlan(token: widget.token, driverId: widget.user.id),
         _api.getDriverLocation(token: widget.token, driverId: widget.user.id),
       ]);
 
@@ -141,9 +178,15 @@ class _DriverPageState extends State<DriverPage> {
         return;
       }
 
+      final incomingRoutePlan = results[1] as DriverRoutePlan;
+      final routePlan = _preferStreetGeometry(
+        incoming: incomingRoutePlan,
+        current: _routePlan,
+      );
       setState(() {
         _orders = results[0] as List<OrderModel>;
-        _routeOrders = results[1] as List<OrderModel>;
+        _routePlan = routePlan;
+        _routeOrders = routePlan.orders;
         _driverLocation = results[2] as DriverLocation?;
         _error = null;
       });
@@ -168,7 +211,7 @@ class _DriverPageState extends State<DriverPage> {
       _isLoading = true;
     });
     try {
-      await _api.respondOrder(
+      final result = await _api.respondOrder(
         token: widget.token,
         orderId: order.id,
         accepted: accepted,
@@ -180,8 +223,35 @@ class _DriverPageState extends State<DriverPage> {
         'accepted': accepted,
       });
 
+      if (accepted) {
+        setState(() {
+          _lastAcceptedExtraMinutes = result.extraMinutes;
+        });
+      }
+
       _pushEvent('Pedido ${order.id}: ${accepted ? 'aceptado' : 'rechazado'}');
       await _loadData(showLoader: false);
+
+      if (!mounted) {
+        return;
+      }
+
+      final extraText = result.extraMinutes == null
+          ? ''
+          : ' Extra: ${result.extraMinutes!.toStringAsFixed(1)} min.';
+      final totalText = result.totalMinutes == null
+          ? ''
+          : ' Ruta total: ${result.totalMinutes!.toStringAsFixed(1)} min.';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            accepted
+                ? 'Pedido aceptado.$extraText$totalText'
+                : 'Pedido rechazado.$totalText',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -410,14 +480,21 @@ class _DriverPageState extends State<DriverPage> {
     final center = _mapCenter(allPoints);
     final zoom = _zoomForPoints(allPoints);
 
+    final routePoints = _routePlan == null
+        ? const <LatLng>[]
+        : _isSparseRouteGeometry(_routePlan!)
+            ? const <LatLng>[]
+            : _routePlan!.routeGeometry
+                .map((point) => LatLng(point.lat, point.lng))
+                .toList();
+
     final polylines = <Polyline>[
-      if (driverPoint != null)
-        for (final order in assignedOrders)
-          Polyline(
-            points: [driverPoint, LatLng(order.lat, order.lng)],
-            color: _assignedColor.withValues(alpha: 0.35),
-            strokeWidth: 2.2,
-          ),
+      if (routePoints.length >= 2)
+        Polyline(
+          points: routePoints,
+          color: _assignedColor.withValues(alpha: 0.42),
+          strokeWidth: 3.2,
+        ),
     ];
 
     final markers = <Marker>[
@@ -431,14 +508,15 @@ class _DriverPageState extends State<DriverPage> {
             color: _driverColor,
           ),
         ),
-      for (final order in assignedOrders)
+      for (final entry in assignedOrders.asMap().entries)
         Marker(
-          point: LatLng(order.lat, order.lng),
+          point: LatLng(entry.value.lat, entry.value.lng),
           width: 40,
           height: 40,
           child: _MapPinIcon(
-            icon: _orderTypeIcon(order.type),
+            icon: _orderTypeIcon(entry.value.type),
             color: _assignedColor,
+            stopNumber: entry.key + 1,
           ),
         ),
       for (final order in possibleOrders)
@@ -501,6 +579,39 @@ class _DriverPageState extends State<DriverPage> {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRouteMetricsCard() {
+    final totalMinutes = _routePlan?.totalMinutes ?? 0.0;
+    final totalDistance = _routePlan?.totalDistanceKm ?? 0.0;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: [
+            _MetricPill(
+              icon: Icons.schedule,
+              label: 'Tiempo total estimado',
+              value: '${totalMinutes.toStringAsFixed(1)} min',
+            ),
+            _MetricPill(
+              icon: Icons.route,
+              label: 'Distancia estimada',
+              value: '${totalDistance.toStringAsFixed(2)} km',
+            ),
+            if (_lastAcceptedExtraMinutes != null)
+              _MetricPill(
+                icon: Icons.add_road,
+                label: 'Ultimo pedido aceptado añadió',
+                value: '${_lastAcceptedExtraMinutes!.toStringAsFixed(1)} min',
+              ),
           ],
         ),
       ),
@@ -600,6 +711,8 @@ class _DriverPageState extends State<DriverPage> {
         children: [
           _SectionTitle(title: 'Mapa operativo', trailing: ''),
           _buildDriverMapCard(),
+          _SectionTitle(title: 'Estimacion de ruta', trailing: ''),
+          _buildRouteMetricsCard(),
           _SectionTitle(title: 'Ubicacion manual', trailing: ''),
           Card(
             child: Padding(
@@ -833,10 +946,12 @@ class _MapPinIcon extends StatelessWidget {
   const _MapPinIcon({
     required this.icon,
     required this.color,
+    this.stopNumber,
   });
 
   final IconData icon;
   final Color color;
+  final int? stopNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -853,7 +968,77 @@ class _MapPinIcon extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(icon, size: 23, color: color),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (stopNumber == null) Icon(icon, size: 23, color: color),
+          if (stopNumber != null)
+            Text(
+              stopNumber.toString(),
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+              ),
+            ),
+          if (stopNumber != null)
+            Positioned(
+              right: 1,
+              bottom: 1,
+              child: Icon(
+                icon,
+                size: 11,
+                color: color.withValues(alpha: 0.85),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricPill extends StatelessWidget {
+  const _MetricPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.black.withValues(alpha: 0.68),
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

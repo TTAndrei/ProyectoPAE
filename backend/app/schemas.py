@@ -117,3 +117,7 @@ class RutaRespuesta(BaseModel):
     created_at: str
     updated_at: str
     orders: list[PedidoRespuesta] = []   # Objetos de pedido completos
+    total_minutes: float = 0.0
+    total_distance_km: float = 0.0
+    route_geometry: list[dict[str, float]] = []
+    leg_minutes: list[float] = []

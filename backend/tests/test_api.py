@@ -233,3 +233,9 @@ async def test_obtener_ruta_repartidor(cliente, token_repartidor1):
     datos = respuesta.json()
     assert "orders" in datos
     assert isinstance(datos["orders"], list)
+    assert "total_minutes" in datos
+    assert "total_distance_km" in datos
+    assert "route_geometry" in datos
+    assert "leg_minutes" in datos
+    assert isinstance(datos["route_geometry"], list)
+    assert isinstance(datos["leg_minutes"], list)

@@ -162,6 +162,9 @@ pytest -v
 | `DB_PATH` | `pae.db` | Ruta de SQLite |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080` | Origenes CORS permitidos |
 | `CORS_ORIGIN_REGEX` | `^https?://(localhost\|127\.0\.0\.1)(:\d+)?$` | Permite origenes locales con puertos dinamicos (Flutter web) |
+| `OSRM_ENABLED` | `1` | Activa calculo de ruta real por calles con OSRM (0 para desactivar) |
+| `OSRM_BASE_URL` | `https://router.project-osrm.org` | Endpoint OSRM para tabla de tiempos y geometria de ruta |
+| `OSRM_TIMEOUT_SECONDS` | `2.0` | Timeout por peticion a OSRM en segundos |
 
 ## API resumida
 
