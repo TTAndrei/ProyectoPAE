@@ -23,3 +23,11 @@ ORIGENES_CORS: list[str] = [
     ).split(",")
     if origen.strip()
 ]
+
+# Regex opcional para permitir orígenes dinámicos de desarrollo local.
+# Por defecto acepta localhost/127.0.0.1 con o sin puerto (Flutter web usa
+# puertos efímeros durante `flutter run`).
+REGEX_ORIGEN_CORS: str = os.getenv(
+    "CORS_ORIGIN_REGEX",
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+)

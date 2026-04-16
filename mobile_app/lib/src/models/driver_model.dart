@@ -49,3 +49,29 @@ class DriverModel {
     );
   }
 }
+
+class DriverLocation {
+  const DriverLocation({
+    required this.driverId,
+    required this.lat,
+    required this.lng,
+    required this.heading,
+    this.updatedAt,
+  });
+
+  final String driverId;
+  final double lat;
+  final double lng;
+  final double heading;
+  final String? updatedAt;
+
+  factory DriverLocation.fromJson(Map<String, dynamic> json) {
+    return DriverLocation(
+      driverId: json['driver_id']?.toString() ?? '',
+      lat: _asNullableDouble(json['lat']) ?? 0,
+      lng: _asNullableDouble(json['lng']) ?? 0,
+      heading: _asNullableDouble(json['heading']) ?? 0,
+      updatedAt: json['updated_at']?.toString(),
+    );
+  }
+}

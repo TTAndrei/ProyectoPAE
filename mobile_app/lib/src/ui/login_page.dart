@@ -104,12 +104,12 @@ class _LoginPageState extends State<LoginPage> {
                         controller: _passwordController,
                         obscureText: true,
                         decoration: const InputDecoration(
-                          labelText: 'Contrasena',
+                          labelText: 'Contraseña',
                           border: OutlineInputBorder(),
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Ingresa tu contrasena';
+                            return 'Ingresa tu contraseña';
                           }
                           return null;
                         },
@@ -123,7 +123,8 @@ class _LoginPageState extends State<LoginPage> {
                               ? const SizedBox(
                                   height: 20,
                                   width: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Text('Entrar'),
                         ),

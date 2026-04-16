@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import ORIGENES_CORS
+from app.config import ORIGENES_CORS, REGEX_ORIGEN_CORS
 from app.database import inicializar_bd
 from app.routers.auth import enrutador as enrutador_auth
 from app.routers.drivers import enrutador as enrutador_repartidores
@@ -51,6 +51,7 @@ def crear_aplicacion() -> FastAPI:
     aplicacion.add_middleware(
         CORSMiddleware,
         allow_origins=ORIGENES_CORS,
+        allow_origin_regex=REGEX_ORIGEN_CORS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

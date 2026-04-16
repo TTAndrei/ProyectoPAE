@@ -37,3 +37,6 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Demo automation runtime state
+scripts/.demo-state.json

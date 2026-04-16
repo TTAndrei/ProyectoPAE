@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../models/driver_model.dart';
@@ -21,6 +23,17 @@ class CentralPage extends StatefulWidget {
 }
 
 class _CentralPageState extends State<CentralPage> {
+  static const List<Color> _driverPalette = [
+    Color(0xFF1D4ED8),
+    Color(0xFF0F766E),
+    Color(0xFFB45309),
+    Color(0xFF9333EA),
+    Color(0xFFDC2626),
+    Color(0xFF0E7490),
+    Color(0xFF7C3AED),
+    Color(0xFF15803D),
+  ];
+
   final WsService _wsService = WsService();
   final Map<String, String> _selectedDriverByOrder = <String, String>{};
   final List<String> _events = <String>[];
@@ -58,6 +71,17 @@ class _CentralPageState extends State<CentralPage> {
 
   List<OrderModel> get _activeOrders {
     return _orders.where((order) => order.status != 'pending').toList();
+  }
+
+  List<OrderModel> get _activeAssignedOrders {
+    return _orders
+        .where(
+          (order) =>
+              order.assignedDriverId != null &&
+              order.status != 'completed' &&
+              order.status != 'rejected',
+        )
+        .toList();
   }
 
   void _connectWs() {
@@ -186,131 +210,12 @@ class _CentralPageState extends State<CentralPage> {
   }
 
   Future<void> _openCreateOrderDialog() async {
-    final formKey = GlobalKey<FormState>();
-    final addressController = TextEditingController();
-    final latController = TextEditingController(text: '40.4168');
-    final lngController = TextEditingController(text: '-3.7038');
-    String selectedType = 'pickup';
-
-    final input = await showDialog<CreateOrderInput>(
+    final draft = await showDialog<_CreateOrderDraft>(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Crear pedido'),
-              content: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DropdownButtonFormField<String>(
-                        value: selectedType,
-                        decoration: const InputDecoration(
-                          labelText: 'Tipo',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'pickup', child: Text('Pickup')),
-                          DropdownMenuItem(value: 'delivery', child: Text('Delivery')),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) {
-                            return;
-                          }
-                          setDialogState(() {
-                            selectedType = value;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: addressController,
-                        decoration: const InputDecoration(
-                          labelText: 'Direccion',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Ingresa una direccion';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: latController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          signed: true,
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Latitud',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || double.tryParse(value.trim()) == null) {
-                            return 'Latitud invalida';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: lngController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          signed: true,
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Longitud',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || double.tryParse(value.trim()) == null) {
-                            return 'Longitud invalida';
-                          }
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    if (!formKey.currentState!.validate()) {
-                      return;
-                    }
-                    Navigator.of(context).pop(
-                      CreateOrderInput(
-                        type: selectedType,
-                        address: addressController.text.trim(),
-                        lat: double.parse(latController.text.trim()),
-                        lng: double.parse(lngController.text.trim()),
-                      ),
-                    );
-                  },
-                  child: const Text('Crear'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => const _CreateOrderDialog(),
     );
 
-    addressController.dispose();
-    latController.dispose();
-    lngController.dispose();
-
-    if (input == null) {
+    if (draft == null) {
       return;
     }
 
@@ -318,7 +223,50 @@ class _CentralPageState extends State<CentralPage> {
       _isLoading = true;
     });
     try {
-      final order = await _api.createOrder(token: widget.token, input: input);
+      final candidates = await _api.geocodeAddressCandidates(
+        address: draft.address,
+        maxResults: 5,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      GeocodeCandidate selectedCandidate;
+      if (candidates.length == 1) {
+        selectedCandidate = candidates.first;
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+
+        final selected = await _openGeocodeCandidateDialog(
+          address: draft.address,
+          candidates: candidates,
+        );
+        if (!mounted) {
+          return;
+        }
+        if (selected == null) {
+          return;
+        }
+
+        selectedCandidate = selected;
+        setState(() {
+          _isLoading = true;
+        });
+      }
+
+      final order = await _api.createOrder(
+        token: widget.token,
+        input: CreateOrderInput(
+          type: draft.type,
+          address: draft.address,
+          lat: selectedCandidate.lat,
+          lng: selectedCandidate.lng,
+        ),
+      );
+
       _pushEvent('Nuevo pedido ${order.id} (${order.type})');
       await _loadData(showLoader: false);
       if (!mounted) {
@@ -341,6 +289,303 @@ class _CentralPageState extends State<CentralPage> {
         });
       }
     }
+  }
+
+  Future<GeocodeCandidate?> _openGeocodeCandidateDialog({
+    required String address,
+    required List<GeocodeCandidate> candidates,
+  }) async {
+    return showDialog<GeocodeCandidate>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Direccion ambigua'),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Se encontraron varias coincidencias para:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.black.withValues(alpha: 0.75),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  address,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                const Text('Toca la ubicacion correcta:'),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: candidates.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, index) {
+                      final candidate = candidates[index];
+                      return Card(
+                        margin: EdgeInsets.zero,
+                        child: ListTile(
+                          leading: const Icon(Icons.place_outlined),
+                          title: Text(candidate.label),
+                          subtitle: Text(
+                            '${candidate.lat.toStringAsFixed(5)}, ${candidate.lng.toStringAsFixed(5)}',
+                          ),
+                          onTap: () {
+                            Navigator.of(dialogContext).pop(candidate);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Map<String, Color> _driverColors() {
+    final ids = _drivers.map((driver) => driver.id).toList()..sort();
+    final map = <String, Color>{};
+    for (var i = 0; i < ids.length; i++) {
+      map[ids[i]] = _driverPalette[i % _driverPalette.length];
+    }
+    return map;
+  }
+
+  IconData _orderTypeIcon(String type) {
+    switch (type) {
+      case 'pickup':
+        return Icons.inventory_2_rounded;
+      case 'delivery':
+        return Icons.subdirectory_arrow_right_rounded;
+      default:
+        return Icons.location_on;
+    }
+  }
+
+  String _orderTypeLabel(String type) {
+    switch (type) {
+      case 'pickup':
+        return 'Pickup';
+      case 'delivery':
+        return 'Delivery';
+      default:
+        return type;
+    }
+  }
+
+  LatLng _mapCenter(List<LatLng> points) {
+    if (points.isEmpty) {
+      return const LatLng(40.4168, -3.7038);
+    }
+
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLng = points.first.longitude;
+    var maxLng = points.first.longitude;
+
+    for (final point in points.skip(1)) {
+      minLat = point.latitude < minLat ? point.latitude : minLat;
+      maxLat = point.latitude > maxLat ? point.latitude : maxLat;
+      minLng = point.longitude < minLng ? point.longitude : minLng;
+      maxLng = point.longitude > maxLng ? point.longitude : maxLng;
+    }
+
+    return LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+  }
+
+  double _zoomForPoints(List<LatLng> points) {
+    if (points.length <= 1) {
+      return 12;
+    }
+
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLng = points.first.longitude;
+    var maxLng = points.first.longitude;
+
+    for (final point in points.skip(1)) {
+      minLat = point.latitude < minLat ? point.latitude : minLat;
+      maxLat = point.latitude > maxLat ? point.latitude : maxLat;
+      minLng = point.longitude < minLng ? point.longitude : minLng;
+      maxLng = point.longitude > maxLng ? point.longitude : maxLng;
+    }
+
+    final span = (maxLat - minLat) > (maxLng - minLng)
+        ? (maxLat - minLat)
+        : (maxLng - minLng);
+
+    if (span > 15) {
+      return 5;
+    }
+    if (span > 8) {
+      return 6;
+    }
+    if (span > 4) {
+      return 7;
+    }
+    if (span > 2) {
+      return 8;
+    }
+    if (span > 1) {
+      return 9;
+    }
+    if (span > 0.4) {
+      return 10;
+    }
+    if (span > 0.15) {
+      return 11;
+    }
+    return 12.5;
+  }
+
+  Widget _buildCentralMapCard() {
+    final driverColors = _driverColors();
+    final activeAssignedOrders = _activeAssignedOrders;
+
+    final driversWithLocation = _drivers
+        .where((driver) => driver.lat != null && driver.lng != null)
+        .toList();
+
+    final points = <LatLng>[
+      for (final driver in driversWithLocation)
+        LatLng(driver.lat!, driver.lng!),
+      for (final order in activeAssignedOrders) LatLng(order.lat, order.lng),
+    ];
+
+    if (points.isEmpty) {
+      return const _EmptyCard(
+        message:
+            'No hay ubicaciones de conductores/pedidos para mostrar en mapa.',
+      );
+    }
+
+    final center = _mapCenter(points);
+    final zoom = _zoomForPoints(points);
+
+    final polylines = <Polyline>[];
+    for (final driver in driversWithLocation) {
+      final color = driverColors[driver.id] ?? _driverPalette.first;
+      final driverPoint = LatLng(driver.lat!, driver.lng!);
+      final ordersForDriver = activeAssignedOrders
+          .where((order) => order.assignedDriverId == driver.id)
+          .toList();
+
+      for (final order in ordersForDriver) {
+        polylines.add(
+          Polyline(
+            points: [driverPoint, LatLng(order.lat, order.lng)],
+            color: color.withValues(alpha: 0.35),
+            strokeWidth: 2.3,
+          ),
+        );
+      }
+    }
+
+    final markers = <Marker>[
+      for (final driver in driversWithLocation)
+        Marker(
+          point: LatLng(driver.lat!, driver.lng!),
+          width: 50,
+          height: 50,
+          child: _MapPinIcon(
+            icon: Icons.local_shipping,
+            color: driverColors[driver.id] ?? _driverPalette.first,
+          ),
+        ),
+      for (final order in activeAssignedOrders)
+        Marker(
+          point: LatLng(order.lat, order.lng),
+          width: 42,
+          height: 42,
+          child: _MapPinIcon(
+            icon: _orderTypeIcon(order.type),
+            color:
+                (driverColors[order.assignedDriverId] ?? _driverPalette.first)
+                    .withValues(alpha: 0.7),
+          ),
+        ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                height: 360,
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: center,
+                    initialZoom: zoom,
+                    minZoom: 3,
+                    maxZoom: 18,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.pae.mobile',
+                    ),
+                    if (polylines.isNotEmpty)
+                      PolylineLayer(polylines: polylines),
+                    MarkerLayer(markers: markers),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 14,
+              runSpacing: 8,
+              children: [
+                ..._drivers.map((driver) {
+                  final count = activeAssignedOrders
+                      .where((order) => order.assignedDriverId == driver.id)
+                      .length;
+                  final color = driverColors[driver.id] ?? _driverPalette.first;
+
+                  return _DriverLegendItem(
+                    color: color,
+                    label: driver.name,
+                    detail: '$count pedidos activos',
+                  );
+                }),
+                const _OrderTypeLegendItem(
+                  icon: Icons.inventory_2_rounded,
+                  label: 'Pickup',
+                ),
+                const _OrderTypeLegendItem(
+                  icon: Icons.subdirectory_arrow_right_rounded,
+                  label: 'Delivery',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -394,6 +639,11 @@ class _CentralPageState extends State<CentralPage> {
           ),
           const SizedBox(height: 6),
           _SectionTitle(
+            title: 'Mapa global conductores + pedidos asignados',
+            trailing: '${_activeAssignedOrders.length}',
+          ),
+          _buildCentralMapCard(),
+          _SectionTitle(
             title: 'Pendientes por asignar',
             trailing: '${_pendingOrders.length}',
           ),
@@ -411,9 +661,10 @@ class _CentralPageState extends State<CentralPage> {
             ..._activeOrders.map(
               (order) => Card(
                 child: ListTile(
+                  leading: Icon(_orderTypeIcon(order.type)),
                   title: Text(order.address),
                   subtitle: Text(
-                    '${order.type} - ${order.status} - Driver: ${order.assignedDriverId ?? 'sin asignar'}',
+                    '${_orderTypeLabel(order.type)} - ${order.status} - Driver: ${order.assignedDriverId ?? 'sin asignar'}',
                   ),
                 ),
               ),
@@ -431,7 +682,8 @@ class _CentralPageState extends State<CentralPage> {
                 ),
               ),
             ),
-          _SectionTitle(title: 'Eventos tiempo real', trailing: '${_events.length}'),
+          _SectionTitle(
+              title: 'Eventos tiempo real', trailing: '${_events.length}'),
           if (_events.isEmpty)
             const _EmptyCard(message: 'Sin eventos recientes')
           else
@@ -451,7 +703,8 @@ class _CentralPageState extends State<CentralPage> {
   Widget _buildPendingOrderCard(OrderModel order) {
     final defaultDriver = _drivers.isNotEmpty ? _drivers.first.id : null;
     final selectedDriverId = _selectedDriverByOrder[order.id] ?? defaultDriver;
-    if (selectedDriverId != null && !_selectedDriverByOrder.containsKey(order.id)) {
+    if (selectedDriverId != null &&
+        !_selectedDriverByOrder.containsKey(order.id)) {
       _selectedDriverByOrder[order.id] = selectedDriverId;
     }
 
@@ -461,15 +714,23 @@ class _CentralPageState extends State<CentralPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              order.address,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+            Row(
+              children: [
+                Icon(_orderTypeIcon(order.type)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    order.address,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
-            Text('${order.type} - ${order.id}'),
+            Text('${_orderTypeLabel(order.type)} - ${order.id}'),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: selectedDriverId,
+              initialValue: selectedDriverId,
               decoration: const InputDecoration(
                 labelText: 'Asignar a',
                 border: OutlineInputBorder(),
@@ -508,6 +769,230 @@ class _CentralPageState extends State<CentralPage> {
   }
 }
 
+class _CreateOrderDialog extends StatefulWidget {
+  const _CreateOrderDialog();
+
+  @override
+  State<_CreateOrderDialog> createState() => _CreateOrderDialogState();
+}
+
+class _CreateOrderDialogState extends State<_CreateOrderDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _addressController = TextEditingController();
+
+  String _selectedType = 'pickup';
+
+  @override
+  void dispose() {
+    _addressController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Crear pedido'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: _selectedType,
+                decoration: const InputDecoration(
+                  labelText: 'Tipo',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'pickup', child: Text('Pickup')),
+                  DropdownMenuItem(value: 'delivery', child: Text('Delivery')),
+                ],
+                onChanged: (value) {
+                  if (value == null) {
+                    return;
+                  }
+                  setState(() {
+                    _selectedType = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Direccion',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Ingresa una direccion';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(Icons.place_outlined, size: 17),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Las coordenadas se calculan automaticamente desde la direccion.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.black.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) {
+              return;
+            }
+            Navigator.of(context).pop(
+              _CreateOrderDraft(
+                type: _selectedType,
+                address: _addressController.text.trim(),
+              ),
+            );
+          },
+          child: const Text('Crear'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CreateOrderDraft {
+  const _CreateOrderDraft({
+    required this.type,
+    required this.address,
+  });
+
+  final String type;
+  final String address;
+}
+
+class _OrderTypeLegendItem extends StatelessWidget {
+  const _OrderTypeLegendItem({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16),
+          const SizedBox(width: 6),
+          Text(label),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapPinIcon extends StatelessWidget {
+  const _MapPinIcon({
+    required this.icon,
+    required this.color,
+  });
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: color, width: 2.4),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(icon, size: 23, color: color),
+    );
+  }
+}
+
+class _DriverLegendItem extends StatelessWidget {
+  const _DriverLegendItem({
+    required this.color,
+    required this.label,
+    required this.detail,
+  });
+
+  final Color color;
+  final String label;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                detail,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.black.withValues(alpha: 0.65),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle({
     required this.title,
@@ -523,15 +1008,16 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
       child: Row(
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
           ),
-          const Spacer(),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(30),
             ),
             child: Text(trailing),

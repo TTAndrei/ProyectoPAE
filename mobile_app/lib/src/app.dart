@@ -34,7 +34,7 @@ class PaeMobileApp extends StatelessWidget {
             backgroundColor: Color(0xFF0F766E),
             foregroundColor: Colors.white,
           ),
-          cardTheme: const CardTheme(
+          cardTheme: const CardThemeData(
             margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),

@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../models/app_user.dart';
+import '../models/driver_model.dart';
 import '../models/order_model.dart';
 import '../services/api_client.dart';
 import '../services/ws_service.dart';
@@ -23,6 +26,10 @@ class DriverPage extends StatefulWidget {
 }
 
 class _DriverPageState extends State<DriverPage> {
+  static const Color _driverColor = Color(0xFF1D4ED8);
+  static const Color _assignedColor = Color(0xFF0F766E);
+  static const Color _possibleColor = Color(0xFFD97706);
+
   final WsService _wsService = WsService();
   final List<String> _events = <String>[];
   final _latController = TextEditingController(text: '40.4168');
@@ -35,6 +42,7 @@ class _DriverPageState extends State<DriverPage> {
 
   List<OrderModel> _orders = const [];
   List<OrderModel> _routeOrders = const [];
+  DriverLocation? _driverLocation;
 
   ApiClient get _api => context.read<ApiClient>();
 
@@ -58,30 +66,30 @@ class _DriverPageState extends State<DriverPage> {
     super.dispose();
   }
 
-  List<OrderModel> get _assignedForResponse {
+  List<OrderModel> get _possibleOrders {
     return _orders
-        .where(
-          (order) => order.status == 'assigned' && order.assignedDriverId == widget.user.id,
-        )
+        .where((order) =>
+            order.status == 'pending' && order.assignedDriverId == null)
         .toList();
   }
 
   List<OrderModel> get _activeRoute {
     final fromRoute = _routeOrders
-        .where((order) => order.status != 'completed' && order.status != 'rejected')
+        .where((order) =>
+            order.assignedDriverId == widget.user.id &&
+            (order.status == 'assigned' || order.status == 'in_progress'))
         .toList();
-    if (fromRoute.isNotEmpty) {
-      return fromRoute;
-    }
 
-    return _orders
+    final assignedOutsideRoute = _orders
         .where(
           (order) =>
               order.assignedDriverId == widget.user.id &&
-              order.status != 'completed' &&
-              order.status != 'rejected',
+              (order.status == 'assigned' || order.status == 'in_progress') &&
+              !fromRoute.any((routeOrder) => routeOrder.id == order.id),
         )
         .toList();
+
+    return [...fromRoute, ...assignedOutsideRoute];
   }
 
   void _connectWs() {
@@ -92,7 +100,9 @@ class _DriverPageState extends State<DriverPage> {
         final type = payload['type']?.toString() ?? 'event';
         _pushEvent('WS: $type');
 
-        if (type == 'pickup:notification') {
+        if (type == 'pickup:notification' ||
+            type == 'driver:location:update' ||
+            type == 'pickup:response') {
           _loadData(showLoader: false);
         }
       },
@@ -124,6 +134,7 @@ class _DriverPageState extends State<DriverPage> {
       final results = await Future.wait<dynamic>([
         _api.getOrders(token: widget.token),
         _api.getRouteOrders(token: widget.token, driverId: widget.user.id),
+        _api.getDriverLocation(token: widget.token, driverId: widget.user.id),
       ]);
 
       if (!mounted) {
@@ -133,6 +144,7 @@ class _DriverPageState extends State<DriverPage> {
       setState(() {
         _orders = results[0] as List<OrderModel>;
         _routeOrders = results[1] as List<OrderModel>;
+        _driverLocation = results[2] as DriverLocation?;
         _error = null;
       });
     } catch (error) {
@@ -186,12 +198,9 @@ class _DriverPageState extends State<DriverPage> {
     }
   }
 
-  Future<void> _startOrder(OrderModel order) async {
-    await _updateOrderStatus(order: order, status: 'in_progress', actionLabel: 'iniciado');
-  }
-
   Future<void> _completeOrder(OrderModel order) async {
-    await _updateOrderStatus(order: order, status: 'completed', actionLabel: 'completado');
+    await _updateOrderStatus(
+        order: order, status: 'completed', actionLabel: 'completado');
   }
 
   Future<void> _updateOrderStatus({
@@ -256,10 +265,22 @@ class _DriverPageState extends State<DriverPage> {
         'heading': 0.0,
       });
 
-      _pushEvent('Ubicacion enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}');
       if (!mounted) {
         return;
       }
+
+      setState(() {
+        _driverLocation = DriverLocation(
+          driverId: widget.user.id,
+          lat: lat,
+          lng: lng,
+          heading: 0,
+          updatedAt: DateTime.now().toIso8601String(),
+        );
+      });
+
+      _pushEvent(
+          'Ubicacion enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ubicacion actualizada')),
       );
@@ -277,6 +298,274 @@ class _DriverPageState extends State<DriverPage> {
         });
       }
     }
+  }
+
+  IconData _orderTypeIcon(String type) {
+    switch (type) {
+      case 'pickup':
+        return Icons.inventory_2_rounded;
+      case 'delivery':
+        return Icons.subdirectory_arrow_right_rounded;
+      default:
+        return Icons.location_on;
+    }
+  }
+
+  String _orderTypeLabel(String type) {
+    switch (type) {
+      case 'pickup':
+        return 'Pickup';
+      case 'delivery':
+        return 'Delivery';
+      default:
+        return type;
+    }
+  }
+
+  LatLng _mapCenter(List<LatLng> points) {
+    if (points.isEmpty) {
+      return const LatLng(40.4168, -3.7038);
+    }
+
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLng = points.first.longitude;
+    var maxLng = points.first.longitude;
+
+    for (final point in points.skip(1)) {
+      minLat = point.latitude < minLat ? point.latitude : minLat;
+      maxLat = point.latitude > maxLat ? point.latitude : maxLat;
+      minLng = point.longitude < minLng ? point.longitude : minLng;
+      maxLng = point.longitude > maxLng ? point.longitude : maxLng;
+    }
+
+    return LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+  }
+
+  double _zoomForPoints(List<LatLng> points) {
+    if (points.length <= 1) {
+      return 13;
+    }
+
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLng = points.first.longitude;
+    var maxLng = points.first.longitude;
+
+    for (final point in points.skip(1)) {
+      minLat = point.latitude < minLat ? point.latitude : minLat;
+      maxLat = point.latitude > maxLat ? point.latitude : maxLat;
+      minLng = point.longitude < minLng ? point.longitude : minLng;
+      maxLng = point.longitude > maxLng ? point.longitude : maxLng;
+    }
+
+    final span = (maxLat - minLat) > (maxLng - minLng)
+        ? (maxLat - minLat)
+        : (maxLng - minLng);
+
+    if (span > 15) {
+      return 5;
+    }
+    if (span > 8) {
+      return 6;
+    }
+    if (span > 4) {
+      return 7;
+    }
+    if (span > 2) {
+      return 8;
+    }
+    if (span > 1) {
+      return 9;
+    }
+    if (span > 0.4) {
+      return 10;
+    }
+    if (span > 0.15) {
+      return 11;
+    }
+    return 12.5;
+  }
+
+  Widget _buildDriverMapCard() {
+    final possibleOrders = _possibleOrders;
+    final assignedOrders = _activeRoute;
+
+    final LatLng? driverPoint = _driverLocation == null
+        ? null
+        : LatLng(_driverLocation!.lat, _driverLocation!.lng);
+
+    final allPoints = <LatLng>[
+      if (driverPoint != null) driverPoint,
+      ...assignedOrders.map((order) => LatLng(order.lat, order.lng)),
+      ...possibleOrders.map((order) => LatLng(order.lat, order.lng)),
+    ];
+
+    if (allPoints.isEmpty) {
+      return const _EmptyCard(
+        message: 'No hay ubicaciones para mostrar en mapa todavia.',
+      );
+    }
+
+    final center = _mapCenter(allPoints);
+    final zoom = _zoomForPoints(allPoints);
+
+    final polylines = <Polyline>[
+      if (driverPoint != null)
+        for (final order in assignedOrders)
+          Polyline(
+            points: [driverPoint, LatLng(order.lat, order.lng)],
+            color: _assignedColor.withValues(alpha: 0.35),
+            strokeWidth: 2.2,
+          ),
+    ];
+
+    final markers = <Marker>[
+      if (driverPoint != null)
+        Marker(
+          point: driverPoint,
+          width: 48,
+          height: 48,
+          child: const _MapPinIcon(
+            icon: Icons.local_shipping,
+            color: _driverColor,
+          ),
+        ),
+      for (final order in assignedOrders)
+        Marker(
+          point: LatLng(order.lat, order.lng),
+          width: 40,
+          height: 40,
+          child: _MapPinIcon(
+            icon: _orderTypeIcon(order.type),
+            color: _assignedColor,
+          ),
+        ),
+      for (final order in possibleOrders)
+        Marker(
+          point: LatLng(order.lat, order.lng),
+          width: 40,
+          height: 40,
+          child: _MapPinIcon(
+            icon: _orderTypeIcon(order.type),
+            color: _possibleColor.withValues(alpha: 0.55),
+          ),
+        ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                height: 320,
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: center,
+                    initialZoom: zoom,
+                    minZoom: 3,
+                    maxZoom: 18,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.pae.mobile',
+                    ),
+                    if (polylines.isNotEmpty)
+                      PolylineLayer(polylines: polylines),
+                    MarkerLayer(markers: markers),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 14,
+              runSpacing: 8,
+              children: const [
+                _LegendItem(label: 'Mi ubicacion', color: _driverColor),
+                _LegendItem(label: 'Pedidos asignados', color: _assignedColor),
+                _LegendItem(label: 'Pedidos posibles', color: _possibleColor),
+                _OrderTypeLegendItem(
+                  icon: Icons.inventory_2_rounded,
+                  label: 'Pickup',
+                ),
+                _OrderTypeLegendItem(
+                  icon: Icons.subdirectory_arrow_right_rounded,
+                  label: 'Delivery',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrdersColumns() {
+    final possibleOrders = _possibleOrders;
+    final acceptedOrders = _activeRoute;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final targetWidth =
+              constraints.maxWidth < 820 ? 820.0 : constraints.maxWidth;
+
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: targetWidth,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _OrderColumn(
+                      title: 'Pedidos posibles',
+                      count: possibleOrders.length,
+                      children: possibleOrders.isEmpty
+                          ? const [
+                              _EmptyCard(
+                                  message:
+                                      'No hay pedidos pendientes por asignar'),
+                            ]
+                          : possibleOrders
+                              .map(_buildPossibleOrderCard)
+                              .toList(),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _OrderColumn(
+                      title: 'Pedidos aceptados / activos',
+                      count: acceptedOrders.length,
+                      children: acceptedOrders.isEmpty
+                          ? const [
+                              _EmptyCard(
+                                  message:
+                                      'No hay pedidos aceptados o activos'),
+                            ]
+                          : acceptedOrders
+                              .asMap()
+                              .entries
+                              .map((entry) => _buildAssignedOrderCard(
+                                  entry.key + 1, entry.value))
+                              .toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -309,6 +598,8 @@ class _DriverPageState extends State<DriverPage> {
       child: ListView(
         padding: const EdgeInsets.only(top: 12, bottom: 24),
         children: [
+          _SectionTitle(title: 'Mapa operativo', trailing: ''),
+          _buildDriverMapCard(),
           _SectionTitle(title: 'Ubicacion manual', trailing: ''),
           Card(
             child: Padding(
@@ -351,22 +642,13 @@ class _DriverPageState extends State<DriverPage> {
               ),
             ),
           ),
-          _SectionTitle(
-            title: 'Recogidas pendientes de respuesta',
-            trailing: '${_assignedForResponse.length}',
+          const _SectionTitle(
+            title: 'Pedidos en columnas',
+            trailing: '',
           ),
-          if (_assignedForResponse.isEmpty)
-            const _EmptyCard(message: 'Sin recogidas por responder')
-          else
-            ..._assignedForResponse.map(_buildPendingResponseCard),
-          _SectionTitle(title: 'Ruta activa', trailing: '${_activeRoute.length}'),
-          if (_activeRoute.isEmpty)
-            const _EmptyCard(message: 'Sin paradas activas')
-          else
-            ..._activeRoute.asMap().entries.map(
-              (entry) => _buildRouteOrderCard(entry.key + 1, entry.value),
-            ),
-          _SectionTitle(title: 'Eventos tiempo real', trailing: '${_events.length}'),
+          _buildOrdersColumns(),
+          _SectionTitle(
+              title: 'Eventos tiempo real', trailing: '${_events.length}'),
           if (_events.isEmpty)
             const _EmptyCard(message: 'Sin eventos recientes')
           else
@@ -383,35 +665,39 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
-  Widget _buildPendingResponseCard(OrderModel order) {
+  Widget _buildPossibleOrderCard(OrderModel order) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              order.address,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            Text('Extra: ${order.estimatedExtraMinutes?.toStringAsFixed(1) ?? '-'} min'),
-            const SizedBox(height: 12),
             Row(
               children: [
+                Icon(_orderTypeIcon(order.type), size: 18),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isLoading ? null : () => _respondToPickup(order, false),
-                    icon: const Icon(Icons.close),
-                    label: const Text('Rechazar'),
+                  child: Text(
+                    order.address,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                const SizedBox(width: 10),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text('${_orderTypeLabel(order.type)} - ${order.id}'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16),
+                const SizedBox(width: 6),
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _isLoading ? null : () => _respondToPickup(order, true),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Aceptar'),
+                  child: Text(
+                    'Disponible para asignacion por Central',
+                    style: TextStyle(
+                      color: Colors.black.withValues(alpha: 0.7),
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ],
@@ -422,7 +708,7 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
-  Widget _buildRouteOrderCard(int index, OrderModel order) {
+  Widget _buildAssignedOrderCard(int index, OrderModel order) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -433,7 +719,7 @@ class _DriverPageState extends State<DriverPage> {
               children: [
                 CircleAvatar(
                   radius: 13,
-                  backgroundColor: Colors.black.withOpacity(0.08),
+                  backgroundColor: Colors.black.withValues(alpha: 0.08),
                   child: Text(index.toString()),
                 ),
                 const SizedBox(width: 10),
@@ -447,15 +733,42 @@ class _DriverPageState extends State<DriverPage> {
               ],
             ),
             const SizedBox(height: 8),
-            Text('${order.type} - ${order.id}'),
+            Row(
+              children: [
+                Icon(_orderTypeIcon(order.type), size: 18),
+                const SizedBox(width: 6),
+                Text('${_orderTypeLabel(order.type)} - ${order.id}'),
+              ],
+            ),
+            if (order.estimatedExtraMinutes != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                  'Extra estimado: ${order.estimatedExtraMinutes!.toStringAsFixed(1)} min'),
+            ],
             const SizedBox(height: 12),
             if (order.status == 'assigned')
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: _isLoading ? null : () => _startOrder(order),
-                  child: const Text('Marcar en curso'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isLoading
+                          ? null
+                          : () => _respondToPickup(order, false),
+                      icon: const Icon(Icons.close),
+                      label: const Text('Rechazar'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _isLoading
+                          ? null
+                          : () => _respondToPickup(order, true),
+                      icon: const Icon(Icons.check),
+                      label: const Text('Aceptar'),
+                    ),
+                  ),
+                ],
               ),
             if (order.status == 'in_progress')
               SizedBox(
@@ -472,6 +785,130 @@ class _DriverPageState extends State<DriverPage> {
   }
 }
 
+class _OrderColumn extends StatelessWidget {
+  const _OrderColumn({
+    required this.title,
+    required this.count,
+    required this.children,
+  });
+
+  final String title;
+  final int count;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text('$count'),
+              ),
+            ],
+          ),
+        ),
+        ...children,
+      ],
+    );
+  }
+}
+
+class _MapPinIcon extends StatelessWidget {
+  const _MapPinIcon({
+    required this.icon,
+    required this.color,
+  });
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: color, width: 2.4),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(icon, size: 23, color: color),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(label),
+      ],
+    );
+  }
+}
+
+class _OrderTypeLegendItem extends StatelessWidget {
+  const _OrderTypeLegendItem({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16),
+        const SizedBox(width: 6),
+        Text(label),
+      ],
+    );
+  }
+}
+
 class _StatusChip extends StatelessWidget {
   const _StatusChip({required this.status});
 
@@ -482,7 +919,7 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: _colorForStatus(status).withOpacity(0.15),
+        color: _colorForStatus(status).withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(30),
       ),
       child: Text(
@@ -555,7 +992,7 @@ class _SectionTitle extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Text(trailing),

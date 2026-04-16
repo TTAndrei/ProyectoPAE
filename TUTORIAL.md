@@ -18,12 +18,41 @@ extra usando insercion optima sobre la ruta activa.
 ## 3) Roles
 
 | Rol | Usuario demo | Contrasena | Permisos principales |
-|-----|--------------|------------|----------------------|
+| --- | ------------ | ---------- | -------------------- |
 | Central | `central` | `central123` | Crear pedidos, asignar pedidos, ver repartidores |
 | Repartidor | `driver1` | `driver123` | Ver ruta, responder recogidas, actualizar ubicacion |
 | Repartidor | `driver2` | `driver123` | Igual que `driver1` |
 
 ## 4) Arranque rapido
+
+### Modo automatico (recomendado para demo rapida)
+
+Desde la raiz de `ProyectoPAE`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1
+```
+
+Que hace este comando:
+
+- Verifica herramientas base (Python y Flutter)
+- Verifica/instala dependencias backend
+- Verifica/instala dependencias Flutter
+- Genera plataformas Flutter faltantes
+- Lanza backend + central + repartidor en 3 terminales
+
+Comandos utiles:
+
+```powershell
+# Reiniciar una sesion anterior automaticamente
+powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1 -ForceRestart
+
+# Verificar e instalar sin lanzar apps
+powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1 -NoLaunch
+
+# Detener toda la sesion automatizada
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-demo.ps1
+```
 
 ### Backend
 
@@ -114,7 +143,7 @@ pytest -v
 ## 8) Variables de entorno backend
 
 | Variable | Valor por defecto | Uso |
-|----------|-------------------|-----|
+| -------- | ----------------- | --- |
 | `SECRET_KEY` | `pae_dev_secret_cambiar_en_produccion` | Firma JWT |
 | `DB_PATH` | `pae.db` | Ruta SQLite |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080` | Origenes permitidos |
@@ -122,7 +151,7 @@ pytest -v
 ## 9) Endpoints API
 
 | Metodo | Ruta | Descripcion |
-|--------|------|-------------|
+| ------ | ---- | ----------- |
 | `POST` | `/auth/login` | Login |
 | `GET` | `/auth/me` | Usuario actual |
 | `GET` | `/drivers/` | Repartidores (central) |

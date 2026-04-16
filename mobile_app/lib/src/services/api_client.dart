@@ -114,8 +114,31 @@ class ApiClient {
     }
 
     return decoded
-        .map((raw) => DriverModel.fromJson(Map<String, dynamic>.from(raw as Map)))
+        .map((raw) =>
+            DriverModel.fromJson(Map<String, dynamic>.from(raw as Map)))
         .toList();
+  }
+
+  Future<DriverLocation?> getDriverLocation({
+    required String token,
+    required String driverId,
+  }) async {
+    final response = await _httpClient.get(
+      _buildUri('/drivers/${Uri.encodeComponent(driverId)}/location'),
+      headers: _headers(token: token),
+    );
+
+    if (response.statusCode == 404) {
+      return null;
+    }
+
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid driver location response format');
+    }
+
+    return DriverLocation.fromJson(Map<String, dynamic>.from(decoded));
   }
 
   Future<List<OrderModel>> getOrders({required String token}) async {
@@ -130,7 +153,8 @@ class ApiClient {
     }
 
     return decoded
-        .map((raw) => OrderModel.fromJson(Map<String, dynamic>.from(raw as Map)))
+        .map(
+            (raw) => OrderModel.fromJson(Map<String, dynamic>.from(raw as Map)))
         .toList();
   }
 
@@ -149,6 +173,79 @@ class ApiClient {
       throw const ApiException('Invalid create order response format');
     }
     return OrderModel.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<List<GeocodeCandidate>> geocodeAddressCandidates({
+    required String address,
+    int maxResults = 5,
+  }) async {
+    final limit = maxResults.clamp(1, 10);
+    final uri = Uri.https(
+      'nominatim.openstreetmap.org',
+      '/search',
+      {
+        'q': address,
+        'format': 'jsonv2',
+        'limit': '$limit',
+      },
+    );
+
+    final response = await _httpClient.get(
+      uri,
+      headers: const {
+        'Accept': 'application/json',
+      },
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+        'No se pudo geocodificar la direccion',
+        statusCode: response.statusCode,
+      );
+    }
+
+    final decoded = _decodeBody(response);
+    if (decoded is! List || decoded.isEmpty) {
+      throw const ApiException('No se encontro la direccion indicada');
+    }
+
+    final candidates = decoded
+        .whereType<Map>()
+        .map((raw) {
+          final lat = double.tryParse(raw['lat']?.toString() ?? '');
+          final lng = double.tryParse(raw['lon']?.toString() ?? '');
+          if (lat == null || lng == null) {
+            return null;
+          }
+
+          final displayName = raw['display_name']?.toString().trim() ?? '';
+          return GeocodeCandidate(
+            lat: lat,
+            lng: lng,
+            label: displayName.isEmpty
+                ? '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}'
+                : displayName,
+          );
+        })
+        .whereType<GeocodeCandidate>()
+        .toList();
+
+    if (candidates.isEmpty) {
+      throw const ApiException('Coordenadas de geocodificacion invalidas');
+    }
+
+    return candidates;
+  }
+
+  Future<({double lat, double lng})> geocodeAddress({
+    required String address,
+  }) async {
+    final candidates = await geocodeAddressCandidates(
+      address: address,
+      maxResults: 1,
+    );
+    final selected = candidates.first;
+    return (lat: selected.lat, lng: selected.lng);
   }
 
   Future<AssignOrderResult> assignOrder({
@@ -229,7 +326,8 @@ class ApiClient {
     }
 
     return rawOrders
-        .map((raw) => OrderModel.fromJson(Map<String, dynamic>.from(raw as Map)))
+        .map(
+            (raw) => OrderModel.fromJson(Map<String, dynamic>.from(raw as Map)))
         .toList();
   }
 
@@ -247,4 +345,16 @@ class ApiClient {
     );
     _ensureSuccess(response);
   }
+}
+
+class GeocodeCandidate {
+  const GeocodeCandidate({
+    required this.lat,
+    required this.lng,
+    required this.label,
+  });
+
+  final double lat;
+  final double lng;
+  final String label;
 }
