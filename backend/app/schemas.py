@@ -17,6 +17,22 @@ class SolicitudLogin(BaseModel):
     password: str
 
 
+class CrearUsuario(BaseModel):
+    """Datos para registrar un nuevo usuario."""
+    username: str
+    password: str
+    role: str   # 'central' o 'repartidor'
+    name: str
+
+    @field_validator("role")
+    @classmethod
+    def validar_rol(cls, valor: str) -> str:
+        """Verifica que el rol sea 'central' o 'repartidor'."""
+        if valor not in ("central", "repartidor"):
+            raise ValueError("El rol debe ser 'central' o 'repartidor'")
+        return valor
+
+
 class UsuarioRespuesta(BaseModel):
     """Información pública del usuario (sin contraseña)."""
     id: str
@@ -80,8 +96,8 @@ class PedidoRespuesta(BaseModel):
     lat: float
     lng: float
     status: str
-    assigned_driver_id: Optional[str]
-    estimated_extra_minutes: Optional[float]
+    assigned_driver_id: Optional[str] = None
+    estimated_extra_minutes: Optional[float] = None
     created_at: str
     updated_at: str
 
@@ -100,10 +116,10 @@ class RepartidorRespuesta(BaseModel):
     id: str
     username: str
     name: str
-    lat: Optional[float]              # None si no ha enviado ubicación aún
-    lng: Optional[float]
-    heading: Optional[float]
-    location_updated_at: Optional[str]
+    lat: Optional[float] = None              # None si no ha enviado ubicación aún
+    lng: Optional[float] = None
+    heading: Optional[float] = None
+    location_updated_at: Optional[str] = None
 
 
 # ── Rutas ─────────────────────────────────────────────────────────────────────

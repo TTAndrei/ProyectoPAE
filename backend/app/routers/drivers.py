@@ -23,18 +23,15 @@ def listar_repartidores(_: dict = Depends(requerir_central)):
     Si un repartidor no ha enviado ubicación aún, los campos lat/lng/heading
     aparecen como null.
     """
-    conexion = obtener_conexion()
-    filas = conexion.execute(
-        """
-        SELECT u.id, u.username, u.name,
-               dl.lat, dl.lng, dl.heading,
-               dl.updated_at AS location_updated_at
-        FROM users u
-        LEFT JOIN driver_locations dl ON dl.driver_id = u.id
-        WHERE u.role = 'repartidor'
-        """
-    ).fetchall()
-    return [dict(fila) for fila in filas]
+    with obtener_conexion() as session:
+        result = session.run("""
+            MATCH (u:User {role: 'repartidor'})
+            RETURN u.id AS id, u.username AS username, u.name AS name,
+                   u.lat AS lat, u.lng AS lng, u.heading AS heading,
+                   toString(u.location_updated_at) AS location_updated_at
+        """)
+        # Convertir registros a diccionarios
+        return [record.data() for record in result]
 
 
 @enrutador.get("/{id_repartidor}/location")
@@ -47,13 +44,16 @@ def obtener_ubicacion_repartidor(
     Raises:
         HTTPException 404: Si el repartidor no tiene ubicación registrada.
     """
-    conexion = obtener_conexion()
-    fila = conexion.execute(
-        "SELECT * FROM driver_locations WHERE driver_id = ?", (id_repartidor,)
-    ).fetchone()
-    if not fila:
-        raise HTTPException(status_code=404, detail="Ubicación no encontrada")
-    return dict(fila)
+    with obtener_conexion() as session:
+        result = session.run("""
+            MATCH (u:User {id: $id})
+            RETURN u.lat AS lat, u.lng AS lng, u.heading AS heading, u.id AS driver_id,
+                   toString(u.location_updated_at) AS updated_at
+        """, {"id": id_repartidor})
+        record = result.single()
+        if not record or record["lat"] is None:
+            raise HTTPException(status_code=404, detail="Ubicación no encontrada")
+        return record.data()
 
 
 @enrutador.put("/{id_repartidor}/location")
@@ -65,7 +65,7 @@ def actualizar_ubicacion_repartidor(
     """Actualiza la posición GPS del repartidor en la base de datos.
 
     Solo el propio repartidor puede actualizar su ubicación.
-    Si no existe una fila previa, se crea automáticamente (INSERT OR UPDATE).
+    En Neo4j, esto es un SET sobre el nodo User.
 
     Raises:
         HTTPException 403: Si el repartidor intenta actualizar la ubicación de otro.
@@ -77,18 +77,15 @@ def actualizar_ubicacion_repartidor(
             detail="Solo puedes actualizar tu propia ubicación",
         )
 
-    conexion = obtener_conexion()
-    conexion.execute(
-        """
-        INSERT INTO driver_locations (driver_id, lat, lng, heading, updated_at)
-        VALUES (?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(driver_id) DO UPDATE SET
-            lat = excluded.lat,
-            lng = excluded.lng,
-            heading = excluded.heading,
-            updated_at = excluded.updated_at
-        """,
-        (id_repartidor, cuerpo.lat, cuerpo.lng, cuerpo.heading),
-    )
-    conexion.commit()
+    with obtener_conexion() as session:
+        session.run("""
+            MATCH (u:User {id: $id})
+            SET u.lat = $lat, u.lng = $lng, u.heading = $heading,
+                u.location_updated_at = datetime()
+        """, {
+            "id": id_repartidor,
+            "lat": cuerpo.lat,
+            "lng": cuerpo.lng,
+            "heading": cuerpo.heading
+        })
     return {"success": True}

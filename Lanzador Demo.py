@@ -53,7 +53,7 @@ class DemoLauncherApp:
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             subprocess.run(
-                ["powershell.exe", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", "ProyectoPAE/scripts/start-demo.ps1", "-ForceRestart"],
+                ["powershell.exe", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", "scripts/start-demo.ps1", "-ForceRestart"],
                 startupinfo=startupinfo,
                 check=True
             )
@@ -67,7 +67,7 @@ class DemoLauncherApp:
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             subprocess.run(
-                ["powershell.exe", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", "ProyectoPAE/scripts/stop-demo.ps1"],
+                ["powershell.exe", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", "scripts/stop-demo.ps1"],
                 startupinfo=startupinfo,
                 check=True
             )
@@ -89,7 +89,7 @@ class DemoLauncherApp:
         self.stop_btn.config(state=tk.DISABLED)
 
 if __name__ == "__main__":
-    if not os.path.exists("ProyectoPAE/scripts/start-demo.ps1"):
+    if not os.path.exists("scripts/start-demo.ps1"):
         messagebox.showerror("Error", "Asegúrese de ejecutar este script desde la carpeta raíz del proyecto.")
     else:
         root = tk.Tk()

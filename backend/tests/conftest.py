@@ -1,43 +1,30 @@
 """Fixtures compartidos de pytest para todas las pruebas de PAE.
 
 Configuración:
-- Usa una base de datos SQLite temporal (archivo .db en /tmp) por sesión
-- Define variables de entorno ANTES de importar módulos de la app
-- Proporciona fixtures reutilizables: cliente HTTP async, tokens de sesión
+- Usa la base de datos Neo4j configurada para pruebas.
+- Define variables de entorno ANTES de importar módulos de la app.
 """
 import os
-import tempfile
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-# Establecer las variables de entorno ANTES de importar cualquier módulo de la app
-# para que config.py las recoja correctamente
-archivo_tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-RUTA_BD_TEMPORAL = archivo_tmp.name
-archivo_tmp.close()
-os.environ["DB_PATH"] = RUTA_BD_TEMPORAL
+# Establecer las variables de entorno para pruebas
 os.environ["SECRET_KEY"] = "clave_secreta_para_pruebas"
-
+# Por defecto usamos la base de datos local 'neo4j'
+# En un entorno de CI/CD se cambiaría por una instancia de pruebas.
+os.environ["NEO4J_DATABASE"] = os.getenv("NEO4J_DATABASE", "neo4j")
 
 @pytest.fixture(scope="session", autouse=True)
 def base_de_datos_prueba():
-    """Inicializa la base de datos de prueba una sola vez por sesión de test.
-
-    Se usa scope='session' para evitar reinicializar la BD en cada test,
-    lo que aceleraría considerablemente la ejecución de la suite.
-    """
+    """Inicializa la base de datos de prueba una sola vez por sesión de test."""
     from app.database import inicializar_bd, cerrar_conexion
+    # NOTA: En Neo4j, esto creará las restricciones y sembrará datos si está vacía.
+    # PRECAUCIÓN: Las pruebas compartirán el estado si no se limpia explícitamente.
     inicializar_bd()
-    yield RUTA_BD_TEMPORAL
-    # Cerrar la conexión SQLite para liberar el archivo en Windows.
+    yield
     try:
         cerrar_conexion()
     except Exception:
-        pass
-    # Limpieza: eliminar el archivo temporal al terminar
-    try:
-        os.unlink(RUTA_BD_TEMPORAL)
-    except (FileNotFoundError, PermissionError):
         pass
 
 
@@ -68,7 +55,7 @@ async def token_central(cliente):
 
 @pytest.fixture
 async def token_repartidor1(cliente):
-    """Token JWT del repartidor 'driver1' para tests que requieren rol repartidor."""
+    """Token JWT del repartidor 'driver1' for tests que requieren rol repartidor."""
     respuesta = await cliente.post(
         "/auth/login", json={"username": "driver1", "password": "driver123"}
     )
