@@ -235,6 +235,16 @@ if (-not $FlutterExecutable) {
 }
 
 $pythonLabel = if ($UsePyLauncher) { "$PythonExecutable -3" } else { $PythonExecutable }
+
+# Intentar detectar venv local
+$venvPath = Join-Path $backendPath ".venv"
+$venvPython = Join-Path $venvPath "Scripts\python.exe"
+if (Test-Path $venvPython) {
+  $PythonExecutable = $venvPython
+  $pythonLabel = "Python (Virtual Env)"
+  $UsePyLauncher = $false
+}
+
 Write-Host (" - Python detectado: {0}" -f $pythonLabel)
 Write-Host (" - Flutter detectado: {0}" -f $FlutterExecutable)
 

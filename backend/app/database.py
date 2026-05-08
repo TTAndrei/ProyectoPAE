@@ -1,159 +1,127 @@
-"""Inicialización de la base de datos SQLite y carga de datos de prueba.
+"""Inicialización de la base de datos Neo4j y carga de datos de prueba.
 
-Utiliza SQLite de la biblioteca estándar de Python (sin dependencias externas)
-junto con el modo WAL para mayor rendimiento en concurrencia.
+Utiliza el driver oficial de Neo4j para Python.
 """
-import sqlite3
-import threading
-from pathlib import Path
+from neo4j import GraphDatabase
 from passlib.context import CryptContext
-from app.config import RUTA_BD
-
-# Almacenamiento local por hilo para mantener una conexión por hilo de ejecución
-_hilo_local = threading.local()
+from app.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DATABASE
 
 # Contexto de hashing de contraseñas (bcrypt)
 contexto_contrasena = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+_driver = None
 
-def obtener_conexion() -> sqlite3.Connection:
-    """Devuelve la conexión SQLite del hilo actual (crea una nueva si no existe).
+def obtener_driver():
+    """Devuelve la instancia global del driver Neo4j."""
+    global _driver
+    if _driver is None:
+        _driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    return _driver
 
-    Se usa WAL (Write-Ahead Logging) para mejorar la concurrencia en lecturas
-    y se activan las claves foráneas para garantizar la integridad referencial.
+def obtener_conexion():
+    """Devuelve una sesión de Neo4j. 
+    
+    Se mantiene el nombre 'obtener_conexion' para minimizar cambios en los routers,
+    aunque técnicamente devuelve un objeto 'Session'.
     """
-    if not hasattr(_hilo_local, "conexion"):
-        conexion = sqlite3.connect(RUTA_BD, check_same_thread=False)
-        # Devuelve filas como objetos similares a diccionarios
-        conexion.row_factory = sqlite3.Row
-        # Modo WAL: mejora el rendimiento en accesos concurrentes
-        conexion.execute("PRAGMA journal_mode=WAL")
-        # Activa la comprobación de integridad referencial
-        conexion.execute("PRAGMA foreign_keys=ON")
-        _hilo_local.conexion = conexion
-    return _hilo_local.conexion
+    return obtener_driver().session(database=NEO4J_DATABASE)
 
+def cerrar_conexion():
+    """Cierra el driver global."""
+    global _driver
+    if _driver:
+        _driver.close()
+        _driver = None
 
-def cerrar_conexion() -> None:
-    """Cierra la conexión del hilo actual si está abierta."""
-    if hasattr(_hilo_local, "conexion"):
-        _hilo_local.conexion.close()
-        del _hilo_local.conexion
+def inicializar_bd():
+    """Crea restricciones de unicidad e índices y carga los datos de demostración."""
+    driver = obtener_driver()
+    with driver.session(database=NEO4J_DATABASE) as session:
+        # Crear restricciones de unicidad (equivalente a PRIMARY KEY / UNIQUE)
+        session.run("CREATE CONSTRAINT user_id_unique IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE")
+        session.run("CREATE CONSTRAINT user_username_unique IF NOT EXISTS FOR (u:User) REQUIRE u.username IS UNIQUE")
+        session.run("CREATE CONSTRAINT order_id_unique IF NOT EXISTS FOR (o:Order) REQUIRE o.id IS UNIQUE")
+        session.run("CREATE CONSTRAINT route_id_unique IF NOT EXISTS FOR (r:Route) REQUIRE r.id IS UNIQUE")
+        
+        # Sembrar datos iniciales si la base de datos está vacía
+        _sembrar_datos(session)
 
-
-def inicializar_bd() -> None:
-    """Crea las tablas si no existen y carga los datos de demostración.
-
-    Esta función se llama automáticamente al arrancar la aplicación
-    (ver el ciclo de vida en main.py). Es seguro llamarla varias veces.
-    """
-    conexion = obtener_conexion()
-    conexion.executescript(
-        """
-        -- Tabla de usuarios: tanto repartidores como operadores centrales
-        CREATE TABLE IF NOT EXISTS users (
-            id          TEXT PRIMARY KEY,
-            username    TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            role        TEXT NOT NULL CHECK(role IN ('central','repartidor')),
-            name        TEXT NOT NULL,
-            created_at  TEXT DEFAULT (datetime('now'))
-        );
-
-        -- Tabla de pedidos/recogidas
-        -- type: 'delivery' (entrega) o 'pickup' (recogida)
-        -- status: ciclo de vida del pedido
-        CREATE TABLE IF NOT EXISTS orders (
-            id              TEXT PRIMARY KEY,
-            type            TEXT NOT NULL CHECK(type IN ('delivery','pickup')),
-            address         TEXT NOT NULL,
-            lat             REAL NOT NULL,
-            lng             REAL NOT NULL,
-            status          TEXT NOT NULL DEFAULT 'pending'
-                CHECK(status IN ('pending','assigned','in_progress','completed','rejected')),
-            assigned_driver_id TEXT REFERENCES users(id),
-            estimated_extra_minutes REAL,
-            created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
-        );
-
-        -- Tabla de rutas activas: lista ordenada de paradas de un repartidor
-        CREATE TABLE IF NOT EXISTS routes (
-            id          TEXT PRIMARY KEY,
-            driver_id   TEXT NOT NULL REFERENCES users(id),
-            order_ids   TEXT NOT NULL DEFAULT '[]',  -- JSON array de IDs de pedidos
-            status      TEXT NOT NULL DEFAULT 'active'
-                CHECK(status IN ('active','completed')),
-            created_at  TEXT DEFAULT (datetime('now')),
-            updated_at  TEXT DEFAULT (datetime('now'))
-        );
-
-        -- Tabla de ubicaciones en tiempo real de los repartidores
-        CREATE TABLE IF NOT EXISTS driver_locations (
-            driver_id   TEXT PRIMARY KEY REFERENCES users(id),
-            lat         REAL NOT NULL,
-            lng         REAL NOT NULL,
-            heading     REAL DEFAULT 0,   -- dirección de movimiento en grados
-            updated_at  TEXT DEFAULT (datetime('now'))
-        );
-        """
-    )
-    conexion.commit()
-    _sembrar_datos(conexion)
-
-
-def _sembrar_datos(conexion: sqlite3.Connection) -> None:
-    """Inserta usuarios y pedidos de demostración en el primer arranque.
-
-    Solo actúa si la tabla de usuarios está vacía (primera ejecución).
-    Los datos de demo permiten probar la aplicación sin configuración adicional.
-    """
-    conteo = conexion.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    if conteo > 0:
-        # La base de datos ya tiene datos → no volver a sembrar
+def _sembrar_datos(session):
+    """Inserta usuarios, pedidos y rutas de demostración."""
+    # Verificar si ya existen usuarios
+    result = session.run("MATCH (u:User) RETURN count(u) AS count")
+    if result.single()["count"] > 0:
         return
 
-    # Usuarios de demostración: 1 central + 2 repartidores
+    # 1. Usuarios de demostración
     usuarios = [
-        ("central-1", "central",  contexto_contrasena.hash("central123"), "central",     "Central Despacho"),
-        ("driver-1",  "driver1",  contexto_contrasena.hash("driver123"),  "repartidor",  "Carlos García"),
-        ("driver-2",  "driver2",  contexto_contrasena.hash("driver123"),  "repartidor",  "María López"),
+        {"id": "central-1", "username": "central", "password_hash": contexto_contrasena.hash("central123"), "role": "central", "name": "Central Despacho"},
+        {"id": "driver-1", "username": "driver1", "password_hash": contexto_contrasena.hash("driver123"), "role": "repartidor", "name": "Carlos García"},
+        {"id": "driver-2", "username": "driver2", "password_hash": contexto_contrasena.hash("driver123"), "role": "repartidor", "name": "María López"},
     ]
-    conexion.executemany(
-        "INSERT INTO users (id,username,password_hash,role,name) VALUES (?,?,?,?,?)",
-        usuarios,
-    )
+    for u in usuarios:
+        session.run("""
+            CREATE (u:User {
+                id: $id, 
+                username: $username, 
+                password_hash: $password_hash, 
+                role: $role, 
+                name: $name,
+                created_at: datetime()
+            })
+        """, u)
 
-    # Pedidos de demo: entregas asignadas + una recogida pendiente
+    # 2. Pedidos de demo
     pedidos = [
-        ("order-1","delivery","Calle Gran Via 1, Madrid",      40.4168,-3.7038,"assigned","driver-1"),
-        ("order-2","delivery","Calle Alcalá 50, Madrid",       40.4189,-3.6929,"assigned","driver-1"),
-        ("order-3","delivery","Paseo Castellana 100, Madrid",  40.4356,-3.6882,"assigned","driver-1"),
-        ("order-4","delivery","Calle Serrano 20, Madrid",      40.4259,-3.6887,"assigned","driver-2"),
-        ("order-5","delivery","Calle Goya 30, Madrid",         40.4238,-3.6797,"assigned","driver-2"),
-        ("order-6","pickup",  "Calle Fuencarral 80, Madrid",   40.4277,-3.7025,"pending", None),
+        {"id": "order-1", "type": "delivery", "address": "Calle Gran Via 1, Madrid", "lat": 40.4168, "lng": -3.7038, "status": "assigned", "driver_id": "driver-1"},
+        {"id": "order-2", "type": "delivery", "address": "Calle Alcalá 50, Madrid", "lat": 40.4189, "lng": -3.6929, "status": "assigned", "driver_id": "driver-1"},
+        {"id": "order-3", "type": "delivery", "address": "Paseo Castellana 100, Madrid", "lat": 40.4356, "lng": -3.6882, "status": "assigned", "driver_id": "driver-1"},
+        {"id": "order-4", "type": "delivery", "address": "Calle Serrano 20, Madrid", "lat": 40.4259, "lng": -3.6887, "status": "assigned", "driver_id": "driver-2"},
+        {"id": "order-5", "type": "delivery", "address": "Calle Goya 30, Madrid", "lat": 40.4238, "lng": -3.6797, "status": "assigned", "driver_id": "driver-2"},
+        {"id": "order-6", "type": "pickup", "address": "Calle Fuencarral 80, Madrid", "lat": 40.4277, "lng": -3.7025, "status": "pending", "driver_id": None},
     ]
-    conexion.executemany(
-        "INSERT INTO orders (id,type,address,lat,lng,status,assigned_driver_id) "
-        "VALUES (?,?,?,?,?,?,?)",
-        pedidos,
-    )
+    for p in pedidos:
+        session.run("""
+            CREATE (o:Order {
+                id: $id, 
+                type: $type, 
+                address: $address, 
+                lat: $lat, 
+                lng: $lng, 
+                status: $status,
+                created_at: datetime(),
+                updated_at: datetime()
+            })
+            WITH o
+            WHERE $driver_id IS NOT NULL
+            MATCH (u:User {id: $driver_id})
+            CREATE (u)-[:ASSIGNED_TO]->(o)
+        """, p)
 
-    # Rutas iniciales para cada repartidor
-    conexion.executemany(
-        "INSERT INTO routes (id,driver_id,order_ids,status) VALUES (?,?,?,?)",
-        [
-            ("route-1","driver-1",'["order-1","order-2","order-3"]',"active"),
-            ("route-2","driver-2",'["order-4","order-5"]',"active"),
-        ],
-    )
+    # 3. Rutas iniciales
+    rutas = [
+        {"id": "route-1", "driver_id": "driver-1", "order_ids": ["order-1", "order-2", "order-3"], "status": "active"},
+        {"id": "route-2", "driver_id": "driver-2", "order_ids": ["order-4", "order-5"], "status": "active"},
+    ]
+    for r in rutas:
+        session.run("""
+            MATCH (u:User {id: $driver_id})
+            CREATE (u)-[:HAS_ROUTE]->(rt:Route {
+                id: $id,
+                order_ids: $order_ids,
+                status: $status,
+                created_at: datetime(),
+                updated_at: datetime()
+            })
+        """, r)
 
-    # Posiciones iniciales de los repartidores
-    conexion.executemany(
-        "INSERT INTO driver_locations (driver_id,lat,lng) VALUES (?,?,?)",
-        [
-            ("driver-1", 40.4168, -3.7038),
-            ("driver-2", 40.4259, -3.6887),
-        ],
-    )
-    conexion.commit()
+    # 4. Posiciones iniciales (guardadas como propiedades en el nodo User)
+    ubicaciones = [
+        {"driver_id": "driver-1", "lat": 40.4168, "lng": -3.7038},
+        {"driver_id": "driver-2", "lat": 40.4259, "lng": -3.6887},
+    ]
+    for loc in ubicaciones:
+        session.run("""
+            MATCH (u:User {id: $driver_id})
+            SET u.lat = $lat, u.lng = $lng, u.heading = 0, u.location_updated_at = datetime()
+        """, loc)

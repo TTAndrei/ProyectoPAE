@@ -12,7 +12,7 @@ extra usando insercion optima sobre la ruta activa.
 
 - Backend: Python + FastAPI
 - Frontend movil: Flutter + Dart
-- Base de datos: SQLite
+- Base de datos: Neo4j (Graph Database)
 - Tiempo real: WebSocket
 
 ## 3) Roles
@@ -56,9 +56,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-demo.ps1
 
 ### Backend
 
-```bash
+1. Crear y activar entorno virtual:
+```powershell
 cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+2. Instalar dependencias:
+```powershell
 pip install -r requirements.txt
+```
+
+3. Ejecutar:
+```powershell
 uvicorn app.main:aplicacion --reload --port 8000
 ```
 
@@ -70,7 +81,7 @@ Backend disponible en `http://localhost:8000`.
 cd mobile_app
 flutter create .
 flutter pub get
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
+flutter run --dart-define=API_BASE_URL=http://localhost:8000
 ```
 
 Notas:
@@ -106,14 +117,15 @@ El login devuelve un token JWT que se envia en cada request:
 Authorization: Bearer <token>
 ```
 
-### SQLite
+### Neo4j (Graph Database)
 
-Tablas principales:
+Nodos y relaciones principales:
 
-- `users`
-- `orders`
-- `routes`
-- `driver_locations`
+- `(User)`: Usuarios (central y repartidores).
+- `(Order)`: Pedidos y recogidas.
+- `(Route)`: Rutas activas conectadas a usuarios.
+- `(User)-[:ASSIGNED_TO]->(Order)`
+- `(User)-[:HAS_ROUTE]->(Route)`
 
 ### WebSocket
 
@@ -145,7 +157,9 @@ pytest -v
 | Variable | Valor por defecto | Uso |
 | -------- | ----------------- | --- |
 | `SECRET_KEY` | `pae_dev_secret_cambiar_en_produccion` | Firma JWT |
-| `DB_PATH` | `pae.db` | Ruta SQLite |
+| `NEO4J_URI` | `neo4j://127.0.0.1:7687` | URI de Neo4j |
+| `NEO4J_USER` | `neo4j` | Usuario Neo4j |
+| `NEO4J_PASSWORD` | `12345678` | Contrasena Neo4j |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080` | Origenes permitidos |
 
 ## 9) Endpoints API
@@ -153,6 +167,7 @@ pytest -v
 | Metodo | Ruta | Descripcion |
 | ------ | ---- | ----------- |
 | `POST` | `/auth/login` | Login |
+| `POST` | `/auth/register` | Registro |
 | `GET` | `/auth/me` | Usuario actual |
 | `GET` | `/drivers/` | Repartidores (central) |
 | `PUT` | `/drivers/:id/location` | Actualizar ubicacion |

@@ -1,4 +1,4 @@
-﻿# ProyectoPAE
+# ProyectoPAE
 
 <!-- markdownlint-disable MD012 -->
 
@@ -10,7 +10,7 @@ Repositorio para la aplicacion de gestion de rutas, pedidos y recogidas de ultim
 | ---- | ---------- |
 | Backend / API | Python 3.12 + FastAPI |
 | Frontend movil | Flutter (Dart) |
-| Base de datos | SQLite (`sqlite3`) |
+| Base de datos | Neo4j (Graph Database) |
 | Tiempo real | WebSocket (FastAPI nativo) |
 | Autenticacion | JWT (`python-jose`) + bcrypt (`passlib`) |
 | Tests backend | pytest + pytest-asyncio + HTTPX |
@@ -60,11 +60,48 @@ mobile_app/
     analysis_options.yaml
 ```
 
+## Configuración de Base de Datos (Neo4j)
+
+Este proyecto utiliza **Neo4j** como base de datos de grafos para gestionar las relaciones entre usuarios, pedidos y rutas.
+
+### 1. Descargar e instalar
+Es necesario descargar e instalar **Neo4j Desktop 2** (o superior) desde la [página oficial de Neo4j](https://neo4j.com/download/).
+
+### 2. Crear base de datos local
+1.  Abre **Neo4j Desktop**.
+2.  Crea un nuevo proyecto o usa el por defecto.
+3.  Haz clic en **"Add"** -> **"Local DBMS"**.
+4.  Configura un nombre (ej: `PAE`) y una contraseña (recomendado: `12345678`).
+5.  Haz clic en **"Create"**.
+6.  Una vez creado, pulsa el botón **"Start"** para iniciar el servidor.
+
+### 3. Conexión
+Por defecto, la aplicación intentará conectarse a:
+- **URL**: `neo4j://127.0.0.1:7687`
+- **Usuario**: `neo4j`
+- **Contraseña**: La que hayas configurado (ej: `12345678`)
+
+> [!NOTE]
+> No es necesario crear las tablas/nodos manualmente. El backend se encarga de crear las restricciones y los datos de prueba (`seeding`) automáticamente al arrancar.
+
 ## Arranque del backend (Python)
 
-```bash
+1. Crear y activar entorno virtual:
+```powershell
 cd backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```` cmd
+.venv\Scripts\activate
+```
+
+2. Instalar dependencias:
+```powershell
 pip install -r requirements.txt
+```
+
+3. Ejecutar:
+```powershell
 uvicorn app.main:aplicacion --reload --port 8000
 ```
 
@@ -159,7 +196,10 @@ pytest -v
 | Variable | Defecto | Descripcion |
 | -------- | ------- | ----------- |
 | `SECRET_KEY` | `pae_dev_secret_cambiar_en_produccion` | Clave JWT |
-| `DB_PATH` | `pae.db` | Ruta de SQLite |
+| `NEO4J_URI` | `neo4j://127.0.0.1:7687` | URI de conexión a Neo4j |
+| `NEO4J_USER` | `neo4j` | Usuario de la base de datos |
+| `NEO4J_PASSWORD` | `12345678` | Contraseña de la base de datos |
+| `NEO4J_DATABASE` | `neo4j` | Nombre de la base de datos |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080` | Origenes CORS permitidos |
 | `CORS_ORIGIN_REGEX` | `^https?://(localhost\|127\.0\.0\.1)(:\d+)?$` | Permite origenes locales con puertos dinamicos (Flutter web) |
 | `OSRM_ENABLED` | `1` | Activa calculo de ruta real por calles con OSRM (0 para desactivar) |
@@ -171,6 +211,7 @@ pytest -v
 | Metodo | Ruta | Descripcion |
 | ------ | ---- | ----------- |
 | `POST` | `/auth/login` | Login y token JWT |
+| `POST` | `/auth/register` | Registro de nuevo usuario (UUID) |
 | `GET` | `/auth/me` | Usuario autenticado |
 | `GET` | `/drivers/` | Lista repartidores (central) |
 | `PUT` | `/drivers/:id/location` | Actualizar ubicacion (repartidor) |
@@ -185,4 +226,3 @@ pytest -v
 ---
 
 Tutorial detallado: [TUTORIAL.md](TUTORIAL.md)
-
