@@ -1,0 +1,137 @@
+ESTADO DE IMPLEMENTACION - ProyectoPAE
+======================================
+
+BACKEND
+-------
+
+[SI] Motor de optimizacion de rutas (greedy insertion, Clarke-Wright, 2-opt)
+     Implementado en: backend/app/routing.py
+     - Nearest-neighbor greedy para rutas cortas (<5 paradas)
+     - Clarke-Wright savings para 5+ paradas (_clarke_wright_orden)
+     - Mejora post-hoc con 2-opt (_mejorar_ruta_2opt)
+     - Cuando OSRM esta activo: optimizacion por matriz de duraciones reales
+       via /table/v1/driving + 2-opt sobre tiempos reales (_optimizar_indices_por_matriz)
+     NO implementado: Dijkstra/A* (no aplica a este problema de VRP; OSRM hace el routing vial)
+
+[SI] Logica de backhauling dinamico y deteccion de oportunidades de recogida
+     Implementado en: backend/app/routing.py (detectar_candidatos_backhauling)
+                      backend/app/routers/orders.py (crear_pedido)
+     - Al crear un pedido de tipo "pickup", se evaluan todos los repartidores activos
+     - Se calcula el tiempo extra de insercion optima para cada uno
+     - Los que esten por debajo del umbral (2 min) se marcan como candidatos
+     - La lista de candidatos se devuelve en la respuesta de creacion del pedido
+
+[SI] Sistema de sugerencia en tiempo real y orquestador de eventos
+     Implementado en: backend/app/routers/ws.py, backend/app/ws_manager.py
+     - Al crear pickup con candidatos, se envia "pickup:suggestion" via WS a cada repartidor candidato
+     - Central puede notificar asignacion via WS ("central:pickup:notify")
+     - Repartidor responde via WS ("driver:pickup:response")
+     - Backend reorquesta: actualiza Neo4j, recalcula ruta, notifica a central
+
+[SI] Arquitectura de roles y permisos (central/repartidor) en servidor
+     Implementado en: backend/app/auth.py, backend/app/routers/auth.py
+                      backend/app/routers/orders.py (Depends(requerir_central))
+     - JWT con campo "role" embebido
+     - Decorador requerir_central bloquea endpoints exclusivos de central
+     - Repartidores solo ven sus pedidos asignados, no los de otros
+
+[SI] Modelo de datos de rutas, paradas, pedidos y jornadas
+     Implementado en: backend/app/database.py, backend/app/schemas.py
+     - Nodos: User, Order, Route, Jornada
+     - Relaciones: ASSIGNED_TO (User->Order), HAS_ROUTE (User->Route)
+     - Restricciones de unicidad en Neo4j para todos los IDs
+     NOTA: Jornada tiene modelo en Neo4j pero el endpoint de gestion de jornadas
+     no esta expuesto en la API actual (schema existe, tabla existe, sin router)
+
+[SI] Backend API en FastAPI
+     Implementado en: backend/app/main.py y backend/app/routers/
+     - /auth/login, /auth/me
+     - /orders/ (GET, POST), /orders/{id}/assign, /orders/{id}/respond, /orders/{id}/status
+     - /orders/route/{driver_id}
+     - /drivers/, /drivers/{id}/location (GET, PUT)
+     - /ws (WebSocket)
+     - /health
+
+[SI] Calculo de desvios y reoptimizacion continua
+     Implementado en: backend/app/routing.py (calcular_tiempo_extra)
+                      backend/app/routers/orders.py (asignar_pedido, responder_pedido)
+     - Al asignar un pedido, se calcula el tiempo extra de insercion optima en la ruta actual
+     - Al aceptar/rechazar, se recalcula y persiste el plan completo en Neo4j
+     - El plan en Neo4j se usa como cache; se recalcula si falta
+
+[SI] Comunicacion en tiempo real (WebSockets)
+     Implementado en: backend/app/ws_manager.py, backend/app/routers/ws.py
+     - GestorConexiones mantiene sockets activos por rol
+     - Mensajes soportados: driver:location, central:pickup:notify,
+       driver:pickup:response, pickup:notification, pickup:suggestion,
+       driver:location:update, pickup:response, driver:offline
+
+[SI] Autenticacion con JWT y hash con bcrypt
+     Implementado en: backend/app/auth.py, backend/app/routers/auth.py
+     - Passwords hasheados con bcrypt via passlib
+     - Tokens JWT firmados con HS256, expiracion configurable (default 8h)
+     - Verificacion en cada endpoint via Depends(obtener_usuario_actual)
+
+[SI] Calculo de tiempos/distancias con OSRM y fallback geografico
+     Implementado en: backend/app/routing.py
+     - OSRM publico (router.project-osrm.org) para geometria vial real,
+       tiempos por tramo y matriz de duraciones
+     - Fallback automatico a Haversine (30 km/h media) si OSRM falla o no responde
+     - OSRM se desactiva automaticamente en tests (PYTEST_CURRENT_TEST)
+
+[SI] Base de datos en Neo4j
+     Implementado en: backend/app/database.py, backend/app/config.py
+     - Driver bolt:// con autenticacion
+     - Constraints de unicidad al arrancar (CREATE CONSTRAINT IF NOT EXISTS)
+     - Seed de datos demo al primer arranque si la DB esta vacia
+     - Base de datos configurable via NEO4J_DATABASE (default: proyectopae)
+
+
+FRONTEND
+--------
+
+[SI] Aplicacion movil en Flutter
+     Implementado en: mobile_app/lib/
+     - App Flutter web (chrome/edge) con navegacion por roles
+     - Login page -> Central page o Driver page segun rol
+     - Soporte para multiples instancias simultaneas (demo launcher)
+
+[SI] HUD del conductor
+     Implementado en: mobile_app/lib/src/ui/driver_page.dart
+     - Columna izquierda: pedidos asignados pendientes de confirmacion (Aceptar/Rechazar)
+     - Columna derecha: pedidos en curso (in_progress) con boton Completar parada
+     - Metricas de ruta: tiempo total, distancia, tiempo del ultimo pedido aceptado
+     - Panel de ubicacion manual con envio de coordenadas
+     - Log de eventos WebSocket en tiempo real
+
+[SI] Renderizacion del mapa
+     Implementado en: mobile_app/lib/src/ui/driver_page.dart
+                      mobile_app/lib/src/ui/central_page.dart
+     - flutter_map con tiles OpenStreetMap
+     - Polyline de ruta vial real (cuando OSRM responde) o linea recta (fallback)
+     - Marcadores numerados por orden de parada
+     - Icono de camion para posicion del repartidor
+     - Vista central: todos los repartidores con rutas en colores distintos
+
+[SI] Geocodificacion de direcciones desde la app
+     Implementado en: mobile_app/lib/src/services/api_client.dart (geocodeAddressCandidates)
+                      mobile_app/lib/src/ui/central_page.dart
+     - Nominatim (OpenStreetMap) como servicio de geocodificacion
+     - Muestra lista de candidatos para que central elija la ubicacion correcta
+     - Sin coste, sin API key requerida
+
+[SI] Consumo de la API
+     Implementado en: mobile_app/lib/src/services/api_client.dart
+     - Cliente HTTP completo con todos los endpoints del backend
+     - Manejo de errores via ApiException con statusCode
+     - Refresh automatico cada 8 segundos en driver_page y central_page
+
+[SI] Cliente WebSocket (envio y recepcion en tiempo real)
+     Implementado en: mobile_app/lib/src/services/ws_service.dart
+                      mobile_app/lib/src/ui/driver_page.dart
+                      mobile_app/lib/src/ui/central_page.dart
+     - Conexion WS autenticada via token en query param
+     - Driver envia: driver:location, driver:pickup:response
+     - Driver recibe: pickup:notification, pickup:suggestion, pickup:response
+     - Central recibe: driver:location:update, pickup:response, driver:offline
+     - Reconexion y log de eventos en UI

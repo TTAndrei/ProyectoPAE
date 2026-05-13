@@ -1,0 +1,82 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter run -d edge --dart-define=API_BASE_URL=http://localhost:8000
+
+## exception
+
+ShaderCompilerException: ShaderCompilerException: Shader compilation of "C:\SDK FLUTTER\flutter\packages\flutter\lib\src\material\shaders\ink_sparkle.frag" to "build\flutter_assets\shaders/ink_sparkle.frag" failed with exit code 1.
+impellerc stdout:
+
+impellerc stderr:
+Could not write file to "build\\flutter_assets\\shaders/ink_sparkle.frag"
+
+
+
+
+```
+#0      ShaderCompiler.compileShader (package:flutter_tools/src/build_system/tools/shader_compiler.dart:196:9)
+<asynchronous suspension>
+#1      writeBundle.<anonymous closure> (package:flutter_tools/src/bundle_builder.dart:208:25)
+<asynchronous suspension>
+#2      Future.wait.<anonymous closure> (dart:async/future.dart:546:21)
+<asynchronous suspension>
+#3      writeBundle (package:flutter_tools/src/bundle_builder.dart:171:3)
+<asynchronous suspension>
+#4      WebDevFS.update (package:flutter_tools/src/isolated/devfs_web.dart:342:9)
+<asynchronous suspension>
+#5      ResidentWebRunner._updateDevFS (package:flutter_tools/src/isolated/resident_web_runner.dart:801:35)
+<asynchronous suspension>
+#6      ResidentWebRunner.run.<anonymous closure> (package:flutter_tools/src/isolated/resident_web_runner.dart:334:41)
+<asynchronous suspension>
+#7      asyncGuard.<anonymous closure> (package:flutter_tools/src/base/async_guard.dart:108:24)
+<asynchronous suspension>
+```
+
+## flutter doctor
+
+```
+[32m[✓][39m Flutter (Channel stable, 3.41.6, on Microsoft Windows [Versi¢n 10.0.26200.8246], locale es-ES) [893ms]
+    [32m•[39m Flutter version 3.41.6 on channel stable at C:\SDK FLUTTER\flutter
+    [32m•[39m Upstream repository https://github.com/flutter/flutter.git
+    [32m•[39m Framework revision db50e20168 (7 weeks ago), 2026-03-25 16:21:00 -0700
+    [32m•[39m Engine revision 425cfb54d0
+    [32m•[39m Dart version 3.11.4
+    [32m•[39m DevTools version 2.54.2
+    [32m•[39m Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android,
+      enable-ios, cli-animations, enable-native-assets, omit-legacy-version-file, enable-lldb-debugging,
+      enable-uiscene-migration
+
+[32m[✓][39m Windows Version (11 Pro 64-bit, 25H2, 2009) [1.780ms]
+
+[31m[✗][39m Android toolchain - develop for Android devices [403ms]
+    [32m•[39m Android SDK at E:\Touch Portal\plugins\adb
+    [32m•[39m Emulator version unknown
+    [31m✗[39m cmdline-tools component is missing.
+      Try installing or updating Android Studio.
+      Alternatively, download the tools from https://developer.android.com/studio#command-line-tools-only and make sure
+      to set the ANDROID_HOME environment variable.
+      See https://developer.android.com/studio/command-line for more details.
+
+[32m[✓][39m Chrome - develop for the web [387ms]
+    [32m•[39m Chrome at C:\Program Files\Google\Chrome\Application\chrome.exe
+
+[33m[!][39m Visual Studio - develop Windows apps (Visual Studio Build Tools 2026 18.4.2) [386ms]
+    [32m•[39m Visual Studio at C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools
+    [32m•[39m Visual Studio Build Tools 2026 version 18.4.11620.152
+    [32m•[39m Windows 10 SDK version 10.0.26100.0
+    [31m✗[39m The current Visual Studio installation is incomplete.
+      Please use Visual Studio Installer to complete the installation or reinstall Visual Studio.
+
+[32m[✓][39m Connected device (3 available) [231ms]
+    [32m•[39m Windows (desktop) • windows • windows-x64    • Microsoft Windows [Versi¢n 10.0.26200.8246]
+    [32m•[39m Chrome (web)      • chrome  • web-javascript • Google Chrome 148.0.7778.97
+    [32m•[39m Edge (web)        • edge    • web-javascript • Microsoft Edge 147.0.3912.86
+
+[32m[✓][39m Network resources [293ms]
+    [32m•[39m All expected network resources are available.
+
+[33m![39m Doctor found issues in 2 categories.
+```

@@ -90,7 +90,10 @@ class DemoLauncherApp:
 
 if __name__ == "__main__":
     if not os.path.exists("scripts/start-demo.ps1"):
+        root = tk.Tk()
+        root.withdraw()
         messagebox.showerror("Error", "Asegúrese de ejecutar este script desde la carpeta raíz del proyecto.")
+        root.destroy()
     else:
         root = tk.Tk()
         app = DemoLauncherApp(root)

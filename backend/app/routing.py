@@ -1,79 +1,24 @@
-"""Utilidades de optimización de rutas para la aplicación PAE.
-
-Incluye:
-1. Distancia Haversine y estimación de minutos.
-2. Pathfinding heurístico para ordenar paradas y minimizar tiempo total
-    (vecino más cercano + mejora 2-opt).
-3. Cálculo de tiempo extra al insertar/aceptar una nueva parada.
-"""
 import math
 
 import httpx
 
 
 def distancia_haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Calcula la distancia en línea recta (km) entre dos puntos geográficos.
-
-    Usa la fórmula Haversine, que tiene en cuenta la esfericidad de la Tierra.
-    Es una aproximación precisa para distancias menores a ~2000 km.
-
-    Args:
-        lat1: Latitud del punto de origen (grados decimales).
-        lng1: Longitud del punto de origen (grados decimales).
-        lat2: Latitud del punto de destino (grados decimales).
-        lng2: Longitud del punto de destino (grados decimales).
-
-    Returns:
-        Distancia en kilómetros (float).
-
-    Ejemplo:
-        >>> distancia_haversine_km(40.4168, -3.7038, 41.3851, 2.1734)
-        # ~505 km (Madrid → Barcelona)
-    """
-    # Radio medio de la Tierra en kilómetros
     RADIO_TIERRA_KM = 6371.0
-
-    # Convertir diferencias de coordenadas a radianes
     delta_lat = math.radians(lat2 - lat1)
     delta_lng = math.radians(lng2 - lng1)
-
-    # Término central de la fórmula Haversine
     termino_central = (
         math.sin(delta_lat / 2) ** 2
         + math.cos(math.radians(lat1))
         * math.cos(math.radians(lat2))
         * math.sin(delta_lng / 2) ** 2
     )
-
-    # Distancia angular y distancia final en km
     return RADIO_TIERRA_KM * 2 * math.atan2(math.sqrt(termino_central), math.sqrt(1 - termino_central))
 
 
 def estimar_minutos(km: float, velocidad_media_kmh: float = 30.0) -> float:
-    """Convierte una distancia en km a tiempo estimado de viaje en minutos.
-
-    Se asume una velocidad media urbana de 30 km/h por defecto,
-    que es representativa para repartos en ciudad con tráfico.
-
-    Args:
-        km: Distancia en kilómetros.
-        velocidad_media_kmh: Velocidad media asumida (km/h). Por defecto 30.
-
-    Returns:
-        Tiempo estimado en minutos (float).
-    """
     return (km / velocidad_media_kmh) * 60.0
 
-
-def _duracion_segundos_en_matriz(matriz: list[list[float | None]], i: int, j: int) -> float:
-    """Obtiene duración i->j de la matriz o infinito si no existe."""
-    try:
-        valor = matriz[i][j]
-    except (IndexError, TypeError):
-        return math.inf
-    if valor is None:
-        return math.inf
-    return float(valor)
 
 
 def _optimizar_indices_por_matriz(matriz_duraciones: list[list[float | None]]) -> list[int]:
@@ -89,11 +34,7 @@ def _optimizar_indices_por_matriz(matriz_duraciones: list[list[float | None]]) -
     while pendientes:
         siguiente = min(
             pendientes,
-            key=lambda indice: _duracion_segundos_en_matriz(
-                matriz_duraciones,
-                actual,
-                indice,
-            ),
+            key=lambda indice: _dur_mat(matriz_duraciones, actual, indice),
         )
         orden.append(siguiente)
         pendientes.remove(siguiente)
@@ -102,13 +43,9 @@ def _optimizar_indices_por_matriz(matriz_duraciones: list[list[float | None]]) -
     def duracion_total(indices: list[int]) -> float:
         if not indices:
             return 0.0
-        acumulado = _duracion_segundos_en_matriz(matriz_duraciones, 0, indices[0])
+        acumulado = _dur_mat(matriz_duraciones, 0, indices[0])
         for idx in range(len(indices) - 1):
-            acumulado += _duracion_segundos_en_matriz(
-                matriz_duraciones,
-                indices[idx],
-                indices[idx + 1],
-            )
+            acumulado += _dur_mat(matriz_duraciones, indices[idx], indices[idx + 1])
         return acumulado
 
     mejor = list(orden)
@@ -127,6 +64,15 @@ def _optimizar_indices_por_matriz(matriz_duraciones: list[list[float | None]]) -
                     mejoro = True
 
     return mejor
+
+
+def _dur_mat(matriz: list[list[float | None]], i: int, j: int) -> float:
+    """Duración i→j de una matriz o infinito si no existe."""
+    try:
+        v = matriz[i][j]
+        return float(v) if v is not None else math.inf
+    except (IndexError, TypeError):
+        return math.inf
 
 
 def _coords_osrm(puntos: list[dict]) -> str:
@@ -359,14 +305,50 @@ def _mejorar_ruta_2opt(origen: dict, ruta_inicial: list[dict]) -> list[dict]:
     return mejor
 
 
-def optimizar_ruta(paradas: list[dict], posicion_repartidor: dict) -> dict:
-    """Ordena paradas para minimizar tiempo estimado total de recorrido.
+def _clarke_wright_orden(origen: dict, paradas: list[dict]) -> list[dict]:
+    """Ordena paradas usando Clarke-Wright savings. Mejor que NN para 5+ paradas."""
+    n = len(paradas)
+    if n <= 1:
+        return list(paradas)
 
-    Devuelve:
-      - paradas_ordenadas: lista en el orden recomendado
-      - distancia_km: distancia total estimada
-      - minutos_totales: tiempo total estimado
-    """
+    ahorros = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            s = (
+                _distancia_entre_puntos_km(origen, paradas[i])
+                + _distancia_entre_puntos_km(origen, paradas[j])
+                - _distancia_entre_puntos_km(paradas[i], paradas[j])
+            )
+            ahorros.append((s, i, j))
+    ahorros.sort(reverse=True)
+
+    rutas: list[list[int]] = [[i] for i in range(n)]
+    pertenece: dict[int, int] = {i: i for i in range(n)}
+
+    for _, i, j in ahorros:
+        ri, rj = pertenece[i], pertenece[j]
+        if ri == rj:
+            continue
+        ruta_i, ruta_j = rutas[ri], rutas[rj]
+        i_at_end = ruta_i[-1] == i or ruta_i[0] == i
+        j_at_end = ruta_j[-1] == j or ruta_j[0] == j
+        if not (i_at_end and j_at_end):
+            continue
+        if ruta_i[0] == i:
+            ruta_i.reverse()
+        if ruta_j[-1] == j:
+            ruta_j.reverse()
+        rutas[ri] = ruta_i + ruta_j
+        rutas[rj] = []
+        for stop in ruta_j:
+            pertenece[stop] = ri
+
+    merged = next((r for r in rutas if r), list(range(n)))
+    return [paradas[idx] for idx in merged]
+
+
+def optimizar_ruta(paradas: list[dict], posicion_repartidor: dict) -> dict:
+    """Ordena paradas para minimizar tiempo total. Clarke-Wright para 5+, NN para menos."""
     if not paradas:
         return {
             "paradas_ordenadas": [],
@@ -374,7 +356,11 @@ def optimizar_ruta(paradas: list[dict], posicion_repartidor: dict) -> dict:
             "minutos_totales": 0.0,
         }
 
-    ruta_inicial = _ruta_vecino_mas_cercano(posicion_repartidor, paradas)
+    if len(paradas) >= 5:
+        ruta_inicial = _clarke_wright_orden(posicion_repartidor, paradas)
+    else:
+        ruta_inicial = _ruta_vecino_mas_cercano(posicion_repartidor, paradas)
+
     ruta_optimizada = _mejorar_ruta_2opt(posicion_repartidor, ruta_inicial)
     distancia_km = _distancia_ruta_km(posicion_repartidor, ruta_optimizada)
 
@@ -468,6 +454,35 @@ def optimizar_ruta_vial(
     }
 
 
+def _obtener_matriz_duraciones(
+    puntos: list[dict],
+    osrm_base_url: str | None,
+    timeout_seconds: float,
+) -> list[list[float]]:
+    """Matriz de duraciones (segundos) entre todos los puntos. Una sola llamada OSRM o fallback haversine."""
+    n = len(puntos)
+    if osrm_base_url and n >= 2:
+        coords = _coords_osrm(puntos)
+        url = f"{osrm_base_url.rstrip('/')}/table/v1/driving/{coords}"
+        try:
+            resp = httpx.get(url, params={"annotations": "duration"}, timeout=timeout_seconds)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("code") == "Ok" and data.get("durations"):
+                return data["durations"]
+        except Exception:
+            pass
+    # Fallback: haversine convertido a segundos (30 km/h)
+    return [
+        [
+            estimar_minutos(_distancia_entre_puntos_km(puntos[i], puntos[j])) * 60.0
+            if i != j else 0.0
+            for j in range(n)
+        ]
+        for i in range(n)
+    ]
+
+
 def calcular_tiempo_extra(
     paradas_actuales: list[dict],
     posicion_repartidor: dict,
@@ -475,62 +490,59 @@ def calcular_tiempo_extra(
     osrm_base_url: str | None = None,
     timeout_seconds: float = 2.0,
 ) -> dict:
-    """Calcula el tiempo mínimo extra (en minutos) de añadir una nueva parada a la ruta.
+    """Tiempo mínimo extra (minutos) de insertar nueva_parada en la ruta actual. Una sola llamada OSRM /table."""
+    puntos = [posicion_repartidor] + list(paradas_actuales)
+    n = len(puntos)
+    nueva_idx = n
+    todos = puntos + [nueva_parada]
 
-    Usa la heurística de inserción óptima: prueba insertar la nueva parada
-    entre cada par consecutivo de puntos de la ruta y elige la posición
-    que minimiza el desvío total.
+    matriz = _obtener_matriz_duraciones(todos, osrm_base_url, timeout_seconds)
 
-    El desvío de insertar entre el punto A y el punto B es:
-        dist(A → nueva) + dist(nueva → B) − dist(A → B)
-
-    Args:
-        paradas_actuales: Lista ordenada de diccionarios con claves 'lat' y 'lng'.
-                          Representa las paradas pendientes del repartidor.
-        posicion_repartidor: Diccionario {'lat': ..., 'lng': ...} con la
-                             posición actual del repartidor.
-        nueva_parada: Diccionario {'lat': ..., 'lng': ...} con la ubicación
-                      de la recogida que se quiere añadir.
-
-    Returns:
-        Diccionario con:
-          - 'extra_minutos': float — tiempo extra estimado en minutos.
-          - 'indice_insercion': int — posición óptima en la lista de paradas.
-
-    Ejemplo:
-        >>> calcular_tiempo_extra(
-        ...     [{"lat": 40.42, "lng": -3.70}],
-        ...     {"lat": 40.41, "lng": -3.71},
-        ...     {"lat": 40.425, "lng": -3.705},
-        ... )
-        {'extra_minutos': 1.2, 'indice_insercion': 0}
-    """
-    base = optimizar_ruta_vial(
-        paradas_actuales,
-        posicion_repartidor,
-        osrm_base_url=osrm_base_url,
-        timeout_seconds=timeout_seconds,
-    )
-
-    nueva_marcada = dict(nueva_parada)
-    nueva_marcada["_tmp_id"] = "__new_stop__"
-    con_nueva = list(paradas_actuales) + [nueva_marcada]
-
-    optimizada = optimizar_ruta_vial(
-        con_nueva,
-        posicion_repartidor,
-        osrm_base_url=osrm_base_url,
-        timeout_seconds=timeout_seconds,
-    )
-    extra_minutos = max(0.0, optimizada["minutos_totales"] - base["minutos_totales"])
-
-    indice_insercion = 0
-    for indice, parada in enumerate(optimizada["paradas_ordenadas"]):
-        if parada.get("_tmp_id") == "__new_stop__":
-            indice_insercion = indice
-            break
+    mejor_extra = math.inf
+    mejor_indice = 0
+    for i in range(n):
+        after = i + 1
+        a_new = _dur_mat(matriz, i, nueva_idx)
+        new_b = _dur_mat(matriz, nueva_idx, after) if after < n else 0.0
+        a_b   = _dur_mat(matriz, i, after)         if after < n else 0.0
+        delta = a_new + new_b - a_b
+        if delta < mejor_extra:
+            mejor_extra = delta
+            mejor_indice = i
 
     return {
-        "extra_minutos": round(extra_minutos, 1),
-        "indice_insercion": indice_insercion,
+        "extra_minutos": round(max(0.0, mejor_extra / 60.0), 1),
+        "indice_insercion": mejor_indice,
     }
+
+
+UMBRAL_BACKHAULING_MINUTOS: float = 2.0
+
+
+def detectar_candidatos_backhauling(
+    nueva_parada: dict,
+    repartidores: list[dict],
+    osrm_base_url: str | None = None,
+    timeout_seconds: float = 2.0,
+    umbral_minutos: float = UMBRAL_BACKHAULING_MINUTOS,
+) -> list[dict]:
+    """Drivers para quienes añadir nueva_parada cuesta <= umbral_minutos de desvío."""
+    candidatos = []
+    for rep in repartidores:
+        if not rep.get("lat") or not rep.get("paradas_activas"):
+            continue
+        resultado = calcular_tiempo_extra(
+            rep["paradas_activas"],
+            {"lat": rep["lat"], "lng": rep["lng"]},
+            nueva_parada,
+            osrm_base_url=osrm_base_url,
+            timeout_seconds=timeout_seconds,
+        )
+        if resultado["extra_minutos"] <= umbral_minutos:
+            candidatos.append({
+                "driver_id": rep["id"],
+                "extra_minutos": resultado["extra_minutos"],
+                "indice_insercion": resultado["indice_insercion"],
+            })
+    candidatos.sort(key=lambda x: x["extra_minutos"])
+    return candidatos

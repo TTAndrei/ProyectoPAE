@@ -68,10 +68,11 @@ class _DriverPageState extends State<DriverPage> {
     super.dispose();
   }
 
-  List<OrderModel> get _possibleOrders {
+  List<OrderModel> get _pendingConfirmationOrders {
     return _orders
         .where((order) =>
-            order.status == 'pending' && order.assignedDriverId == null)
+            order.assignedDriverId == widget.user.id &&
+            order.status == 'assigned')
         .toList();
   }
 
@@ -79,19 +80,19 @@ class _DriverPageState extends State<DriverPage> {
     final fromRoute = _routeOrders
         .where((order) =>
             order.assignedDriverId == widget.user.id &&
-            (order.status == 'assigned' || order.status == 'in_progress'))
+            order.status == 'in_progress')
         .toList();
 
-    final assignedOutsideRoute = _orders
+    final activeOutsideRoute = _orders
         .where(
           (order) =>
               order.assignedDriverId == widget.user.id &&
-              (order.status == 'assigned' || order.status == 'in_progress') &&
+              order.status == 'in_progress' &&
               !fromRoute.any((routeOrder) => routeOrder.id == order.id),
         )
         .toList();
 
-    return [...fromRoute, ...assignedOutsideRoute];
+    return [...fromRoute, ...activeOutsideRoute];
   }
 
   void _connectWs() {
@@ -458,7 +459,7 @@ class _DriverPageState extends State<DriverPage> {
   }
 
   Widget _buildDriverMapCard() {
-    final possibleOrders = _possibleOrders;
+    final possibleOrders = _pendingConfirmationOrders;
     final assignedOrders = _activeRoute;
 
     final LatLng? driverPoint = _driverLocation == null
@@ -492,8 +493,8 @@ class _DriverPageState extends State<DriverPage> {
       if (routePoints.length >= 2)
         Polyline(
           points: routePoints,
-          color: _assignedColor.withValues(alpha: 0.42),
-          strokeWidth: 3.2,
+          color: _assignedColor.withValues(alpha: 1.0),
+          strokeWidth: 5.0,
         ),
     ];
 
@@ -619,8 +620,8 @@ class _DriverPageState extends State<DriverPage> {
   }
 
   Widget _buildOrdersColumns() {
-    final possibleOrders = _possibleOrders;
-    final acceptedOrders = _activeRoute;
+    final pendingOrders = _pendingConfirmationOrders;
+    final activeOrders = _activeRoute;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -638,31 +639,33 @@ class _DriverPageState extends State<DriverPage> {
                 children: [
                   Expanded(
                     child: _OrderColumn(
-                      title: 'Pedidos posibles',
-                      count: possibleOrders.length,
-                      children: possibleOrders.isEmpty
+                      title: 'Por confirmar',
+                      count: pendingOrders.length,
+                      children: pendingOrders.isEmpty
                           ? const [
                               _EmptyCard(
                                   message:
-                                      'No hay pedidos pendientes por asignar'),
+                                      'No hay pedidos asignados pendientes de confirmacion'),
                             ]
-                          : possibleOrders
-                              .map(_buildPossibleOrderCard)
+                          : pendingOrders
+                              .asMap()
+                              .entries
+                              .map((entry) => _buildAssignedOrderCard(
+                                  entry.key + 1, entry.value))
                               .toList(),
                     ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
                     child: _OrderColumn(
-                      title: 'Pedidos aceptados / activos',
-                      count: acceptedOrders.length,
-                      children: acceptedOrders.isEmpty
+                      title: 'En curso',
+                      count: activeOrders.length,
+                      children: activeOrders.isEmpty
                           ? const [
                               _EmptyCard(
-                                  message:
-                                      'No hay pedidos aceptados o activos'),
+                                  message: 'No hay pedidos en curso'),
                             ]
-                          : acceptedOrders
+                          : activeOrders
                               .asMap()
                               .entries
                               .map((entry) => _buildAssignedOrderCard(
@@ -778,48 +781,6 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
-  Widget _buildPossibleOrderCard(OrderModel order) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(_orderTypeIcon(order.type), size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    order.address,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text('${_orderTypeLabel(order.type)} - ${order.id}'),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.info_outline, size: 16),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Disponible para asignacion por Central',
-                    style: TextStyle(
-                      color: Colors.black.withValues(alpha: 0.7),
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildAssignedOrderCard(int index, OrderModel order) {
     return Card(
@@ -837,9 +798,22 @@ class _DriverPageState extends State<DriverPage> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    order.address,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (order.name != null)
+                        Text(
+                          order.name!,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      Text(
+                        order.address,
+                        style: TextStyle(
+                          fontWeight: order.name != null ? FontWeight.w400 : FontWeight.w600,
+                          fontSize: order.name != null ? 12 : 14,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 _StatusChip(status: order.status),

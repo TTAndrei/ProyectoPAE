@@ -11,7 +11,7 @@ HORAS_EXPIRACION_TOKEN: int = 8
 
 # ── Base de datos (Neo4j) ───────────────────────────────────────────────────────
 # URI de conexión a Neo4j (por defecto Bolt local)
-NEO4J_URI: str = os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687")
+NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
 # Credenciales de acceso
 NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "12345678")

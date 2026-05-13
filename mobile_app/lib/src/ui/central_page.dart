@@ -357,6 +357,7 @@ class _CentralPageState extends State<CentralPage> {
         token: widget.token,
         input: CreateOrderInput(
           type: draft.type,
+          name: draft.name,
           address: draft.address,
           lat: selectedCandidate.lat,
           lng: selectedCandidate.lng,
@@ -598,8 +599,8 @@ class _CentralPageState extends State<CentralPage> {
       polylines.add(
         Polyline(
           points: routePoints,
-          color: color.withValues(alpha: 0.35),
-          strokeWidth: 2.3,
+          color: color.withValues(alpha: 1.0),
+          strokeWidth: 5.0,
         ),
       );
     }
@@ -882,12 +883,14 @@ class _CreateOrderDialog extends StatefulWidget {
 
 class _CreateOrderDialogState extends State<_CreateOrderDialog> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _addressController = TextEditingController();
 
   String _selectedType = 'pickup';
 
   @override
   void dispose() {
+    _nameController.dispose();
     _addressController.dispose();
     super.dispose();
   }
@@ -920,6 +923,14 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                     _selectedType = value;
                   });
                 },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre empresa / cliente (opcional)',
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -968,6 +979,7 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
             Navigator.of(context).pop(
               _CreateOrderDraft(
                 type: _selectedType,
+                name: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
                 address: _addressController.text.trim(),
               ),
             );
@@ -983,9 +995,11 @@ class _CreateOrderDraft {
   const _CreateOrderDraft({
     required this.type,
     required this.address,
+    this.name,
   });
 
   final String type;
+  final String? name;
   final String address;
 }
 

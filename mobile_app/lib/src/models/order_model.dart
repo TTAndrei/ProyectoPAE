@@ -18,12 +18,14 @@ class OrderModel {
     required this.status,
     required this.createdAt,
     required this.updatedAt,
+    this.name,
     this.assignedDriverId,
     this.estimatedExtraMinutes,
   });
 
   final String id;
   final String type;
+  final String? name;
   final String address;
   final double lat;
   final double lng;
@@ -42,6 +44,7 @@ class OrderModel {
     return OrderModel(
       id: json['id']?.toString() ?? '',
       type: json['type']?.toString() ?? '',
+      name: json['name']?.toString(),
       address: json['address']?.toString() ?? '',
       lat: _asDouble(json['lat']),
       lng: _asDouble(json['lng']),
@@ -62,9 +65,11 @@ class CreateOrderInput {
     required this.address,
     required this.lat,
     required this.lng,
+    this.name,
   });
 
   final String type;
+  final String? name;
   final String address;
   final double lat;
   final double lng;
@@ -72,6 +77,7 @@ class CreateOrderInput {
   Map<String, dynamic> toJson() {
     return {
       'type': type,
+      if (name != null && name!.isNotEmpty) 'name': name,
       'address': address,
       'lat': lat,
       'lng': lng,

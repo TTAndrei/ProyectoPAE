@@ -1,15 +1,5 @@
-"""Router de pedidos/recogidas: CRUD y gestión del ciclo de vida.
-
-Endpoints:
-  GET    /orders/                    → Lista pedidos (Central: todos; Repartidor: propios + pendientes)
-  POST   /orders/                    → Crea un nuevo pedido (solo Central)
-  POST   /orders/{id}/assign         → Asigna un pedido a un repartidor + calcula tiempo extra
-  POST   /orders/{id}/respond        → Repartidor acepta o rechaza una recogida
-  PATCH  /orders/{id}/status         → Actualiza el estado de un pedido
-  GET    /orders/route/{id_repartidor} → Devuelve la ruta activa de un repartidor
-"""
-import json
 import uuid
+import json
 from fastapi import APIRouter, HTTPException, status, Depends
 
 from app.database import obtener_conexion
@@ -19,14 +9,13 @@ from app.schemas import (
 )
 from app.auth import obtener_usuario_actual, requerir_central
 from app.config import OSRM_ACTIVO, OSRM_BASE_URL, OSRM_TIMEOUT_SEGUNDOS
-from app.routing import calcular_tiempo_extra, optimizar_ruta_vial
+from app.routing import calcular_tiempo_extra, optimizar_ruta_vial, detectar_candidatos_backhauling
+from app.ws_manager import gestor
 
-# Enrutador de pedidos con prefijo /orders
 enrutador = APIRouter(prefix="/orders", tags=["pedidos"])
 
 
 def _obtener_posicion_repartidor(session, id_repartidor: str) -> dict | None:
-    """Devuelve la ubicación actual del repartidor o None si no existe."""
     result = session.run(
         "MATCH (u:User {id: $id}) RETURN u.lat AS lat, u.lng AS lng",
         {"id": id_repartidor},
@@ -38,20 +27,30 @@ def _obtener_posicion_repartidor(session, id_repartidor: str) -> dict | None:
 
 
 def _obtener_paradas_activas(session, id_repartidor: str) -> list[dict]:
-    """Obtiene pedidos activos del repartidor aptos para cálculo de ruta."""
     result = session.run(
         """
         MATCH (u:User {id: $id})-[:ASSIGNED_TO]->(o:Order)
-        WHERE o.status IN ('assigned','in_progress')
+        WHERE o.status IN $statuses
         RETURN o.id AS id, o.lat AS lat, o.lng AS lng
         """,
-        {"id": id_repartidor},
+        {"id": id_repartidor, "statuses": ["assigned", "in_progress"]},
     )
     return [record.data() for record in result]
 
 
+def _obtener_repartidores_activos_con_paradas(session) -> list[dict]:
+    result = session.run("""
+        MATCH (u:User {role: 'repartidor'})
+        WHERE u.lat IS NOT NULL
+        OPTIONAL MATCH (u)-[:ASSIGNED_TO]->(o:Order)
+        WHERE o.status IN ["assigned", "in_progress"]
+        RETURN u.id AS id, u.lat AS lat, u.lng AS lng,
+               collect({id: o.id, lat: o.lat, lng: o.lng}) AS paradas_activas
+    """)
+    return [dict(r) for r in result]
+
+
 def _plan_ruta_repartidor(session, id_repartidor: str) -> dict:
-    """Calcula orden óptimo y métricas de ruta activa del repartidor."""
     paradas = _obtener_paradas_activas(session, id_repartidor)
     if not paradas:
         return {
@@ -64,7 +63,6 @@ def _plan_ruta_repartidor(session, id_repartidor: str) -> dict:
 
     posicion = _obtener_posicion_repartidor(session, id_repartidor)
     if not posicion:
-        # Fallback para no bloquear el algoritmo cuando todavía no hay GPS.
         posicion = {"lat": paradas[0]["lat"], "lng": paradas[0]["lng"]}
 
     optimizada = optimizar_ruta_vial(
@@ -84,73 +82,119 @@ def _plan_ruta_repartidor(session, id_repartidor: str) -> dict:
     }
 
 
-def _persistir_orden_ruta_activa(session, id_repartidor: str, order_ids: list[str]) -> None:
-    """Guarda en el nodo Route el orden optimizado actual."""
+def _persistir_metricas_ruta(session, id_repartidor: str, plan: dict) -> None:
     session.run(
         """
         MATCH (u:User {id: $id})-[:HAS_ROUTE]->(r:Route {status: 'active'})
-        SET r.order_ids = $order_ids, r.updated_at = datetime()
+        SET r.order_ids         = $order_ids,
+            r.total_minutes     = $total_minutes,
+            r.total_distance_km = $total_distance_km,
+            r.route_geometry    = $route_geometry,
+            r.leg_minutes       = $leg_minutes,
+            r.updated_at        = datetime()
         """,
-        {"id": id_repartidor, "order_ids": order_ids},
+        {
+            "id": id_repartidor,
+            "order_ids": plan["order_ids"],
+            "total_minutes": plan["total_minutes"],
+            "total_distance_km": plan["total_distance_km"],
+            "route_geometry": json.dumps(plan["route_geometry"]),
+            "leg_minutes": plan["leg_minutes"],
+        },
     )
 
 
 @enrutador.get("/", response_model=list[PedidoRespuesta])
 def listar_pedidos(usuario_actual: dict = Depends(obtener_usuario_actual)):
-    """Devuelve la lista de pedidos según el rol del usuario."""
     with obtener_conexion() as session:
         if usuario_actual["role"] == "central":
-            # Central: vista completa del sistema
-            result = session.run("MATCH (o:Order) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o ORDER BY o.created_at DESC")
-        else:
-            # Repartidor: sus pedidos asignados + recogidas pendientes disponibles
             result = session.run(
                 """
                 MATCH (o:Order)
-                OPTIONAL MATCH (u:User {id: $uid})-[:ASSIGNED_TO]->(o)
-                WHERE u IS NOT NULL OR o.status = 'pending'
-                RETURN DISTINCT o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o
+                OPTIONAL MATCH (u:User)-[:ASSIGNED_TO]->(o)
+                RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o,
+                       u.id AS assigned_driver_id
+                ORDER BY o.created_at DESC
+                """
+            )
+        else:
+            result = session.run(
+                """
+                MATCH (o:Order)
+                OPTIONAL MATCH (asignado_a_mi:User {id: $uid})-[:ASSIGNED_TO]->(o)
+                WHERE asignado_a_mi IS NOT NULL OR o.status = 'pending'
+                WITH DISTINCT o
+                OPTIONAL MATCH (asignado:User)-[:ASSIGNED_TO]->(o)
+                RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o,
+                       asignado.id AS assigned_driver_id
                 ORDER BY o.created_at DESC
                 """,
                 {"uid": usuario_actual["id"]},
             )
-        
+
         pedidos = []
         for record in result:
-            o = record["o"]
-            pedido_dict = dict(o)
-            # Neo4j no tiene claves foráneas de la misma forma, buscamos la relación
-            assign_result = session.run(
-                "MATCH (u:User)-[:ASSIGNED_TO]->(o:Order {id: $oid}) RETURN u.id AS uid",
-                {"oid": o["id"]}
-            ).single()
-            pedido_dict["assigned_driver_id"] = assign_result["uid"] if assign_result else None
+            pedido_dict = dict(record["o"])
+            pedido_dict["assigned_driver_id"] = record["assigned_driver_id"]
             pedidos.append(pedido_dict)
         return pedidos
 
 
 @enrutador.post("/", response_model=PedidoRespuesta, status_code=status.HTTP_201_CREATED)
-def crear_pedido(cuerpo: CrearPedido, _: dict = Depends(requerir_central)):
-    """Crea un nuevo pedido o recogida."""
+async def crear_pedido(cuerpo: CrearPedido, _: dict = Depends(requerir_central)):
     id_pedido = str(uuid.uuid4())
     with obtener_conexion() as session:
         session.run(
             """
             CREATE (o:Order {
-                id: $id, 
-                type: $type, 
-                address: $address, 
-                lat: $lat, 
-                lng: $lng, 
+                id: $id,
+                type: $type,
+                name: $name,
+                address: $address,
+                lat: $lat,
+                lng: $lng,
                 status: 'pending',
                 created_at: datetime(),
                 updated_at: datetime()
             })
             """,
-            {"id": id_pedido, "type": cuerpo.type, "address": cuerpo.address, "lat": cuerpo.lat, "lng": cuerpo.lng},
+            {"id": id_pedido, "type": cuerpo.type, "name": cuerpo.name, "address": cuerpo.address, "lat": cuerpo.lat, "lng": cuerpo.lng},
         )
-        record = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()
-        return record["o"]
+        record = session.run(
+            "MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o",
+            {"id": id_pedido},
+        ).single()
+        resp = dict(record["o"])
+        resp["assigned_driver_id"] = None
+
+        candidatos = []
+        if cuerpo.type == "pickup":
+            repartidores = _obtener_repartidores_activos_con_paradas(session)
+            candidatos = detectar_candidatos_backhauling(
+                {"lat": cuerpo.lat, "lng": cuerpo.lng},
+                repartidores,
+                osrm_base_url=OSRM_BASE_URL if OSRM_ACTIVO else None,
+                timeout_seconds=OSRM_TIMEOUT_SEGUNDOS,
+            )
+        resp["backhauling_candidates"] = candidatos
+
+    # Push WS fuera del bloque DB para no mantener la sesión abierta
+    if candidatos:
+        for c in candidatos:
+            await gestor.enviar_a_repartidor(c["driver_id"], {
+                "type": "pickup:suggestion",
+                "order_id": id_pedido,
+                "order": resp,
+                "extra_minutes": c["extra_minutos"],
+                "indice_insercion": c["indice_insercion"],
+            })
+        await gestor.difundir_a_central({
+            "type": "backhauling:candidates",
+            "order_id": id_pedido,
+            "candidates": candidatos,
+        })
+
+    return resp
 
 
 @enrutador.post("/{id_pedido}/assign")
@@ -159,7 +203,6 @@ def asignar_pedido(
     cuerpo: AsignarPedido,
     _: dict = Depends(requerir_central),
 ):
-    """Asigna un pedido a un repartidor."""
     with obtener_conexion() as session:
         record = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()
         if not record:
@@ -176,7 +219,7 @@ def asignar_pedido(
                     "lng": paradas_activas[0]["lng"],
                 }
             else:
-                posicion_repartidor = {"lat": pedido["lat"], "lng": pedido["lng"]}
+                posicion_repartidor = {"lat": 40.4168, "lng": -3.7038}
 
         resultado = calcular_tiempo_extra(
             paradas_activas,
@@ -200,7 +243,7 @@ def asignar_pedido(
         )
         
         plan = _plan_ruta_repartidor(session, cuerpo.driver_id)
-        _persistir_orden_ruta_activa(session, cuerpo.driver_id, plan["order_ids"])
+        _persistir_metricas_ruta(session, cuerpo.driver_id, plan)
 
         actualizado_record = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()
         actualizado_dict = actualizado_record["o"]
@@ -223,7 +266,6 @@ def responder_pedido(
     cuerpo: ResponderPedido,
     usuario_actual: dict = Depends(obtener_usuario_actual),
 ):
-    """El repartidor acepta o rechaza una recogida."""
     if usuario_actual["role"] != "repartidor":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -256,7 +298,7 @@ def responder_pedido(
         )
 
         plan = _plan_ruta_repartidor(session, usuario_actual["id"])
-        _persistir_orden_ruta_activa(session, usuario_actual["id"], plan["order_ids"])
+        _persistir_metricas_ruta(session, usuario_actual["id"], plan)
 
         actualizado = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()["o"]
         actualizado["assigned_driver_id"] = usuario_actual["id"]
@@ -312,7 +354,7 @@ def actualizar_estado_pedido(
         }
         if driver_id:
             plan = _plan_ruta_repartidor(session, driver_id)
-            _persistir_orden_ruta_activa(session, driver_id, plan["order_ids"])
+            _persistir_metricas_ruta(session, driver_id, plan)
             plan_data = plan
 
         actualizado = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()["o"]
@@ -330,7 +372,6 @@ def obtener_ruta_repartidor(
     id_repartidor: str,
     usuario_actual: dict = Depends(obtener_usuario_actual),
 ):
-    """Devuelve la ruta activa de un repartidor."""
     if usuario_actual["role"] != "central" and (
         usuario_actual["role"] != "repartidor" or usuario_actual["id"] != id_repartidor
     ):
@@ -341,30 +382,42 @@ def obtener_ruta_repartidor(
             "MATCH (u:User {id: $id})-[:HAS_ROUTE]->(r:Route {status: 'active'}) RETURN r {.*, created_at: toString(r.created_at), updated_at: toString(r.updated_at)} AS r",
             {"id": id_repartidor},
         ).single()
-        
+
         if not ruta_record:
             raise HTTPException(status_code=404, detail="No se encontró ruta activa")
-        
-        ruta = ruta_record["r"]
-        plan = _plan_ruta_repartidor(session, id_repartidor)
-        ids_pedidos = plan["order_ids"]
-        _persistir_orden_ruta_activa(session, id_repartidor, ids_pedidos)
 
+        ruta = dict(ruta_record["r"])
+
+        # Usar métricas cacheadas; solo recalcular si faltan (primera vez o datos obsoletos)
+        if not ruta.get("route_geometry"):
+            plan = _plan_ruta_repartidor(session, id_repartidor)
+            _persistir_metricas_ruta(session, id_repartidor, plan)
+            ruta.update(plan)
+        else:
+            ruta.setdefault("order_ids", [])
+            ruta.setdefault("total_minutes", 0.0)
+            ruta.setdefault("total_distance_km", 0.0)
+            ruta.setdefault("leg_minutes", [])
+
+        ids_pedidos = ruta.get("order_ids") or []
         pedidos = []
-        if ids_pedidos:
-            for pid in ids_pedidos:
-                o_record = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": pid}).single()
-                if o_record:
-                    o_dict = o_record["o"]
-                    o_dict["assigned_driver_id"] = id_repartidor
-                    pedidos.append(o_dict)
+        for pid in ids_pedidos:
+            o_record = session.run(
+                "MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o",
+                {"id": pid},
+            ).single()
+            if o_record:
+                o_dict = dict(o_record["o"])
+                o_dict["assigned_driver_id"] = id_repartidor
+                pedidos.append(o_dict)
 
         return {
-            **dict(ruta),
-            "order_ids": json.dumps(ids_pedidos),
+            **ruta,
+            "driver_id": id_repartidor,
+            "order_ids": ids_pedidos,
             "orders": pedidos,
-            "total_minutes": plan["total_minutes"],
-            "total_distance_km": plan["total_distance_km"],
-            "route_geometry": plan["route_geometry"],
-            "leg_minutes": plan["leg_minutes"],
+            "total_minutes": ruta.get("total_minutes", 0.0),
+            "total_distance_km": ruta.get("total_distance_km", 0.0),
+            "route_geometry": json.loads(ruta["route_geometry"]) if isinstance(ruta.get("route_geometry"), str) else ruta.get("route_geometry", []),
+            "leg_minutes": ruta.get("leg_minutes", []),
         }

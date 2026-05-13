@@ -1,40 +1,28 @@
-"""Modelos Pydantic para validación de peticiones y respuestas de la API PAE.
-
-Cada clase define la forma exacta (tipo y campos) de los datos que entran
-o salen de los endpoints REST. Pydantic valida automáticamente los tipos
-y devuelve errores 422 si los datos no cumplen los requisitos.
-"""
 from __future__ import annotations
 from typing import Optional
 from pydantic import BaseModel, field_validator
 
 
-# ── Autenticación ─────────────────────────────────────────────────────────────
-
 class SolicitudLogin(BaseModel):
-    """Datos necesarios para iniciar sesión."""
     username: str
     password: str
 
 
 class CrearUsuario(BaseModel):
-    """Datos para registrar un nuevo usuario."""
     username: str
     password: str
-    role: str   # 'central' o 'repartidor'
+    role: str
     name: str
 
     @field_validator("role")
     @classmethod
     def validar_rol(cls, valor: str) -> str:
-        """Verifica que el rol sea 'central' o 'repartidor'."""
         if valor not in ("central", "repartidor"):
             raise ValueError("El rol debe ser 'central' o 'repartidor'")
         return valor
 
 
 class UsuarioRespuesta(BaseModel):
-    """Información pública del usuario (sin contraseña)."""
     id: str
     username: str
     role: str
@@ -42,98 +30,95 @@ class UsuarioRespuesta(BaseModel):
 
 
 class RespuestaToken(BaseModel):
-    """Respuesta completa del endpoint de login: token JWT + datos del usuario."""
     token: str
     user: UsuarioRespuesta
 
 
-# ── Pedidos ───────────────────────────────────────────────────────────────────
-
 class CrearPedido(BaseModel):
-    """Datos para crear un nuevo pedido o recogida."""
-    type: str       # 'delivery' (entrega) o 'pickup' (recogida)
-    address: str    # Dirección completa del punto de parada
-    lat: float      # Latitud geográfica
-    lng: float      # Longitud geográfica
+    type: str
+    address: str
+    lat: float
+    lng: float
+    name: Optional[str] = None
 
     @field_validator("type")
     @classmethod
     def validar_tipo(cls, valor: str) -> str:
-        """Verifica que el tipo sea 'delivery' o 'pickup'."""
         if valor not in ("delivery", "pickup"):
-            raise ValueError("El tipo debe ser 'delivery' (entrega) o 'pickup' (recogida)")
+            raise ValueError("El tipo debe ser 'delivery' o 'pickup'")
         return valor
 
 
 class AsignarPedido(BaseModel):
-    """Datos para asignar un pedido a un repartidor."""
-    driver_id: str   # ID del repartidor al que se asigna
+    driver_id: str
 
 
 class ResponderPedido(BaseModel):
-    """Respuesta del repartidor ante una notificación de recogida."""
-    accepted: bool   # True = aceptar, False = rechazar
+    accepted: bool
 
 
 class ActualizarEstadoPedido(BaseModel):
-    """Datos para actualizar el estado de un pedido (solo repartidor)."""
-    status: str   # 'in_progress' (en curso) o 'completed' (completado)
+    status: str
 
     @field_validator("status")
     @classmethod
     def validar_estado(cls, valor: str) -> str:
-        """Verifica que el estado sea uno de los valores permitidos."""
         if valor not in ("in_progress", "completed"):
             raise ValueError("El estado debe ser 'in_progress' o 'completed'")
         return valor
 
 
 class PedidoRespuesta(BaseModel):
-    """Representación completa de un pedido devuelto por la API."""
     id: str
     type: str
+    name: Optional[str] = None
     address: str
     lat: float
     lng: float
     status: str
     assigned_driver_id: Optional[str] = None
     estimated_extra_minutes: Optional[float] = None
+    backhauling_candidates: list[dict] = []
     created_at: str
     updated_at: str
 
 
-# ── Repartidores ──────────────────────────────────────────────────────────────
-
 class ActualizarUbicacion(BaseModel):
-    """Datos de ubicación enviados por un repartidor."""
-    lat: float           # Latitud actual
-    lng: float           # Longitud actual
-    heading: float = 0.0  # Dirección de movimiento en grados (0–360)
+    lat: float
+    lng: float
+    heading: float = 0.0
 
 
 class RepartidorRespuesta(BaseModel):
-    """Información de un repartidor con su ubicación actual."""
     id: str
     username: str
     name: str
-    lat: Optional[float] = None              # None si no ha enviado ubicación aún
+    lat: Optional[float] = None
     lng: Optional[float] = None
     heading: Optional[float] = None
     location_updated_at: Optional[str] = None
 
-
-# ── Rutas ─────────────────────────────────────────────────────────────────────
-
 class RutaRespuesta(BaseModel):
-    """Ruta activa de un repartidor con su lista de paradas."""
     id: str
     driver_id: str
-    order_ids: str          # JSON array con los IDs de pedidos en orden
+    order_ids: list[str] = []
     status: str
     created_at: str
     updated_at: str
-    orders: list[PedidoRespuesta] = []   # Objetos de pedido completos
+    orders: list[PedidoRespuesta] = []
     total_minutes: float = 0.0
     total_distance_km: float = 0.0
     route_geometry: list[dict[str, float]] = []
     leg_minutes: list[float] = []
+
+
+class IniciarJornada(BaseModel):
+    pass
+
+
+class JornadaRespuesta(BaseModel):
+    id: str
+    driver_id: str
+    status: str
+    start_time: str
+    end_time: Optional[str] = None
