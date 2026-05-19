@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
@@ -32,8 +33,7 @@ class _DriverPageState extends State<DriverPage> {
 
   final WsService _wsService = WsService();
   final List<String> _events = <String>[];
-  final _latController = TextEditingController(text: '40.4168');
-  final _lngController = TextEditingController(text: '-3.7038');
+  final MapController _mapController = MapController();
 
   Timer? _refreshTimer;
 
@@ -57,14 +57,15 @@ class _DriverPageState extends State<DriverPage> {
       const Duration(seconds: 8),
       (_) => _loadData(showLoader: false),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _getCurrentLocation();
+    });
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
     _wsService.disconnect();
-    _latController.dispose();
-    _lngController.dispose();
     super.dispose();
   }
 
@@ -307,20 +308,57 @@ class _DriverPageState extends State<DriverPage> {
     }
   }
 
-  Future<void> _sendLocation() async {
-    final lat = double.tryParse(_latController.text.trim());
-    final lng = double.tryParse(_lngController.text.trim());
-
-    if (lat == null || lng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Latitud/longitud invalidas')),
-      );
-      return;
-    }
-
+  Future<void> _getCurrentLocation() async {
     setState(() {
       _isLoading = true;
     });
+
+    try {
+      bool serviceEnabled;
+      LocationPermission permission;
+
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Los servicios de ubicación están desactivados.');
+      }
+
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Los permisos de ubicación fueron denegados.');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Los permisos de ubicación están denegados permanentemente.');
+      }
+
+      final Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      await _sendLocationDirect(position.latitude, position.longitude);
+      _mapController.move(LatLng(position.latitude, position.longitude), 14.5);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error de ubicación: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _sendLocationDirect(double lat, double lng) async {
     try {
       await _api.updateDriverLocation(
         token: widget.token,
@@ -351,23 +389,17 @@ class _DriverPageState extends State<DriverPage> {
       });
 
       _pushEvent(
-          'Ubicacion enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}');
+          'Ubicación real enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ubicacion actualizada')),
+        const SnackBar(content: Text('Ubicación real actualizada')),
       );
     } catch (error) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al enviar ubicacion: $error')),
+        SnackBar(content: Text('Error al enviar ubicación: $error')),
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
   }
 
@@ -543,6 +575,7 @@ class _DriverPageState extends State<DriverPage> {
               child: SizedBox(
                 height: 320,
                 child: FlutterMap(
+                  mapController: _mapController,
                   options: MapOptions(
                     initialCenter: center,
                     initialZoom: zoom,
@@ -716,44 +749,33 @@ class _DriverPageState extends State<DriverPage> {
           _buildDriverMapCard(),
           _SectionTitle(title: 'Estimacion de ruta', trailing: ''),
           _buildRouteMetricsCard(),
-          _SectionTitle(title: 'Ubicacion manual', trailing: ''),
+          _SectionTitle(title: 'Ubicación real', trailing: ''),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  TextFormField(
-                    controller: _latController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      signed: true,
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Latitud',
-                      border: OutlineInputBorder(),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.place, color: _assignedColor),
+                      const SizedBox(width: 8),
+                      Text(
+                        _driverLocation != null
+                            ? 'Última ubicación: ${_driverLocation!.lat.toStringAsFixed(6)}, ${_driverLocation!.lng.toStringAsFixed(6)}'
+                            : 'Ubicación no obtenida todavía',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _lngController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      signed: true,
-                      decimal: true,
+                  if (_driverLocation != null && _driverLocation!.updatedAt != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Actualizado: ${_driverLocation!.updatedAt!.length >= 19 ? _driverLocation!.updatedAt!.substring(11, 19) : _driverLocation!.updatedAt}',
+                      style: const TextStyle(fontSize: 12, color: Colors.black54),
                     ),
-                    decoration: const InputDecoration(
-                      labelText: 'Longitud',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _isLoading ? null : _sendLocation,
-                      icon: const Icon(Icons.my_location),
-                      label: const Text('Enviar ubicacion'),
-                    ),
-                  ),
+                  ],
+
                 ],
               ),
             ),
