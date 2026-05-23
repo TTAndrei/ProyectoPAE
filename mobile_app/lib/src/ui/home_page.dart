@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../config/app_config.dart';
+import '../providers/driver_provider.dart';
+import '../providers/order_provider.dart';
+import '../providers/route_provider.dart';
+import '../services/driver_service.dart';
+import '../services/order_service.dart';
+import '../services/route_service.dart';
 import '../state/session_controller.dart';
+import '../theme/app_theme.dart';
 import 'central_page.dart';
 import 'driver_page.dart';
 
@@ -20,20 +28,78 @@ class HomePage extends StatelessWidget {
       );
     }
 
+    final orderService = context.read<OrderService>();
+    final driverService = context.read<DriverService>();
+    final routeService = context.read<RouteService>();
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('PAE Mobile - ${user.name} (${user.role})'),
+        backgroundColor: AppTheme.secondary,
+        foregroundColor: Colors.white,
+        title: Text(
+          'PAE Mobile - ${user.name} (${user.role})',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
             tooltip: 'Cerrar sesion',
             onPressed: () => context.read<SessionController>().logout(),
             icon: const Icon(Icons.logout),
+            color: Colors.white,
           ),
         ],
       ),
       body: user.role == 'central'
-          ? CentralPage(token: token)
-          : DriverPage(token: token, user: user),
+          ? MultiProvider(
+              providers: [
+                ChangeNotifierProvider<OrderProvider>(
+                  create: (_) => OrderProvider(
+                    orderService: orderService,
+                    routeService: routeService,
+                    token: token,
+                    apiBaseUrl: AppConfig.apiBaseUrl,
+                  ),
+                ),
+                ChangeNotifierProvider<DriverProvider>(
+                  create: (_) => DriverProvider(
+                    driverService: driverService,
+                    routeService: routeService,
+                    token: token,
+                    apiBaseUrl: AppConfig.apiBaseUrl,
+                    user: user,
+                  ),
+                ),
+                ChangeNotifierProvider<RouteProvider>(
+                  create: (_) => RouteProvider(routeService: routeService),
+                ),
+              ],
+              child: const CentralPage(),
+            )
+          : MultiProvider(
+              providers: [
+                ChangeNotifierProvider<OrderProvider>(
+                  create: (_) => OrderProvider(
+                    orderService: orderService,
+                    routeService: routeService,
+                    token: token,
+                    apiBaseUrl: AppConfig.apiBaseUrl,
+                  ),
+                ),
+                ChangeNotifierProvider<DriverProvider>(
+                  create: (_) => DriverProvider(
+                    driverService: driverService,
+                    routeService: routeService,
+                    token: token,
+                    apiBaseUrl: AppConfig.apiBaseUrl,
+                    user: user,
+                  ),
+                ),
+                ChangeNotifierProvider<RouteProvider>(
+                  create: (_) => RouteProvider(routeService: routeService),
+                ),
+              ],
+              child: const DriverPage(),
+            ),
     );
   }
 }

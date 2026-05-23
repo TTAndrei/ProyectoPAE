@@ -1,407 +1,47 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
-import '../models/app_user.dart';
 import '../models/driver_model.dart';
 import '../models/order_model.dart';
-import '../services/api_client.dart';
-import '../services/ws_service.dart';
+import '../providers/driver_provider.dart';
+import '../providers/order_provider.dart';
+import '../providers/route_provider.dart';
+import '../theme/app_theme.dart';
+import 'widgets/app_button.dart';
+import 'widgets/app_section_title.dart';
+import 'widgets/app_empty_card.dart';
+import 'widgets/app_map_pin_icon.dart';
+import 'widgets/app_legend_items.dart';
+import 'widgets/app_status_chip.dart';
+import 'widgets/app_metric_pill.dart';
 
 class DriverPage extends StatefulWidget {
-  const DriverPage({
-    super.key,
-    required this.token,
-    required this.user,
-  });
-
-  final String token;
-  final AppUser user;
+  const DriverPage({super.key});
 
   @override
   State<DriverPage> createState() => _DriverPageState();
 }
 
 class _DriverPageState extends State<DriverPage> {
-  static const Color _driverColor = Color(0xFF1D4ED8);
-  static const Color _assignedColor = Color(0xFF0F766E);
-  static const Color _possibleColor = Color(0xFFD97706);
+  static const Color _driverColor = AppTheme.secondary;
+  static const Color _assignedColor = AppTheme.tertiary;
+  static const Color _possibleColor = AppTheme.primary;
 
-  final WsService _wsService = WsService();
-  final List<String> _events = <String>[];
   final MapController _mapController = MapController();
 
-  Timer? _refreshTimer;
-
-  bool _isLoading = false;
-  String? _error;
-
-  List<OrderModel> _orders = const [];
-  List<OrderModel> _routeOrders = const [];
-  DriverLocation? _driverLocation;
-  DriverRoutePlan? _routePlan;
   double? _lastAcceptedExtraMinutes;
-
-  ApiClient get _api => context.read<ApiClient>();
 
   @override
   void initState() {
     super.initState();
-    _loadData();
-    _connectWs();
-    _refreshTimer = Timer.periodic(
-      const Duration(seconds: 8),
-      (_) => _loadData(showLoader: false),
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _getCurrentLocation();
     });
   }
 
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    _wsService.disconnect();
-    super.dispose();
-  }
-
-  List<OrderModel> get _pendingConfirmationOrders {
-    return _orders
-        .where((order) =>
-            order.assignedDriverId == widget.user.id &&
-            order.status == 'assigned')
-        .toList();
-  }
-
-  List<OrderModel> get _activeRoute {
-    final fromRoute = _routeOrders
-        .where((order) =>
-            order.assignedDriverId == widget.user.id &&
-            order.status == 'in_progress')
-        .toList();
-
-    final activeOutsideRoute = _orders
-        .where(
-          (order) =>
-              order.assignedDriverId == widget.user.id &&
-              order.status == 'in_progress' &&
-              !fromRoute.any((routeOrder) => routeOrder.id == order.id),
-        )
-        .toList();
-
-    return [...fromRoute, ...activeOutsideRoute];
-  }
-
-  void _connectWs() {
-    _wsService.connect(
-      apiBaseUrl: _api.baseUrl,
-      token: widget.token,
-      onMessage: (payload) {
-        final type = payload['type']?.toString() ?? 'event';
-        _pushEvent('WS: $type');
-
-        if (type == 'pickup:notification' ||
-            type == 'driver:location:update' ||
-            type == 'pickup:response') {
-          _loadData(showLoader: false);
-        }
-      },
-      onError: (error) => _pushEvent('WS error: $error'),
-      onDone: () => _pushEvent('WS disconnected'),
-    );
-  }
-
-  void _pushEvent(String value) {
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _events.insert(0, value);
-      if (_events.length > 8) {
-        _events.removeLast();
-      }
-    });
-  }
-
-  bool _isSparseRouteGeometry(DriverRoutePlan plan) {
-    if (plan.routeGeometry.length < 2) {
-      return true;
-    }
-    final minimumWaypointCount =
-        plan.orders.isEmpty ? 0 : plan.orders.length + 1;
-    return plan.routeGeometry.length <= minimumWaypointCount;
-  }
-
-  DriverRoutePlan _preferStreetGeometry({
-    required DriverRoutePlan incoming,
-    DriverRoutePlan? current,
-  }) {
-    if (current == null) {
-      return incoming;
-    }
-
-    final incomingSparse = _isSparseRouteGeometry(incoming);
-    final currentLooksStreet = !_isSparseRouteGeometry(current);
-
-    if (incomingSparse && currentLooksStreet) {
-      return DriverRoutePlan(
-        orders: incoming.orders,
-        totalMinutes: incoming.totalMinutes,
-        totalDistanceKm: incoming.totalDistanceKm,
-        routeGeometry: current.routeGeometry,
-        legMinutes: incoming.legMinutes.isNotEmpty
-            ? incoming.legMinutes
-            : current.legMinutes,
-      );
-    }
-
-    return incoming;
-  }
-
-  Future<void> _loadData({bool showLoader = true}) async {
-    if (showLoader && mounted) {
-      setState(() {
-        _isLoading = true;
-      });
-    }
-
-    try {
-      final results = await Future.wait<dynamic>([
-        _api.getOrders(token: widget.token),
-        _api.getRoutePlan(token: widget.token, driverId: widget.user.id),
-        _api.getDriverLocation(token: widget.token, driverId: widget.user.id),
-      ]);
-
-      if (!mounted) {
-        return;
-      }
-
-      final incomingRoutePlan = results[1] as DriverRoutePlan;
-      final routePlan = _preferStreetGeometry(
-        incoming: incomingRoutePlan,
-        current: _routePlan,
-      );
-      setState(() {
-        _orders = results[0] as List<OrderModel>;
-        _routePlan = routePlan;
-        _routeOrders = routePlan.orders;
-        _driverLocation = results[2] as DriverLocation?;
-        _error = null;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _error = error.toString();
-      });
-    } finally {
-      if (showLoader && mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _respondToPickup(OrderModel order, bool accepted) async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      final result = await _api.respondOrder(
-        token: widget.token,
-        orderId: order.id,
-        accepted: accepted,
-      );
-
-      _wsService.send({
-        'type': 'driver:pickup:response',
-        'order_id': order.id,
-        'accepted': accepted,
-      });
-
-      if (accepted) {
-        setState(() {
-          _lastAcceptedExtraMinutes = result.extraMinutes;
-        });
-      }
-
-      _pushEvent('Pedido ${order.id}: ${accepted ? 'aceptado' : 'rechazado'}');
-      await _loadData(showLoader: false);
-
-      if (!mounted) {
-        return;
-      }
-
-      final extraText = result.extraMinutes == null
-          ? ''
-          : ' Extra: ${result.extraMinutes!.toStringAsFixed(1)} min.';
-      final totalText = result.totalMinutes == null
-          ? ''
-          : ' Ruta total: ${result.totalMinutes!.toStringAsFixed(1)} min.';
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            accepted
-                ? 'Pedido aceptado.$extraText$totalText'
-                : 'Pedido rechazado.$totalText',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al responder: $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _completeOrder(OrderModel order) async {
-    await _updateOrderStatus(
-        order: order, status: 'completed', actionLabel: 'completado');
-  }
-
-  Future<void> _updateOrderStatus({
-    required OrderModel order,
-    required String status,
-    required String actionLabel,
-  }) async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      await _api.updateOrderStatus(
-        token: widget.token,
-        orderId: order.id,
-        status: status,
-      );
-      _pushEvent('Pedido ${order.id} $actionLabel');
-      await _loadData(showLoader: false);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al actualizar pedido: $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _getCurrentLocation() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      bool serviceEnabled;
-      LocationPermission permission;
-
-      serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        throw Exception('Los servicios de ubicación están desactivados.');
-      }
-
-      permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw Exception('Los permisos de ubicación fueron denegados.');
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception('Los permisos de ubicación están denegados permanentemente.');
-      }
-
-      final Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
-
-      await _sendLocationDirect(position.latitude, position.longitude);
-      _mapController.move(LatLng(position.latitude, position.longitude), 14.5);
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error de ubicación: $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _sendLocationDirect(double lat, double lng) async {
-    try {
-      await _api.updateDriverLocation(
-        token: widget.token,
-        driverId: widget.user.id,
-        lat: lat,
-        lng: lng,
-      );
-
-      _wsService.send({
-        'type': 'driver:location',
-        'lat': lat,
-        'lng': lng,
-        'heading': 0.0,
-      });
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _driverLocation = DriverLocation(
-          driverId: widget.user.id,
-          lat: lat,
-          lng: lng,
-          heading: 0,
-          updatedAt: DateTime.now().toIso8601String(),
-        );
-      });
-
-      _pushEvent(
-          'Ubicación real enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ubicación real actualizada')),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al enviar ubicación: $error')),
-      );
-    }
-  }
+  // ── Helpers (pure UI) ────────────────────────────────────────────
 
   IconData _orderTypeIcon(String type) {
     switch (type) {
@@ -426,9 +66,7 @@ class _DriverPageState extends State<DriverPage> {
   }
 
   LatLng _mapCenter(List<LatLng> points) {
-    if (points.isEmpty) {
-      return const LatLng(40.4168, -3.7038);
-    }
+    if (points.isEmpty) return const LatLng(40.4168, -3.7038);
 
     var minLat = points.first.latitude;
     var maxLat = points.first.latitude;
@@ -441,14 +79,11 @@ class _DriverPageState extends State<DriverPage> {
       minLng = point.longitude < minLng ? point.longitude : minLng;
       maxLng = point.longitude > maxLng ? point.longitude : maxLng;
     }
-
     return LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
   }
 
   double _zoomForPoints(List<LatLng> points) {
-    if (points.length <= 1) {
-      return 13;
-    }
+    if (points.length <= 1) return 13;
 
     var minLat = points.first.latitude;
     var maxLat = points.first.latitude;
@@ -466,46 +101,146 @@ class _DriverPageState extends State<DriverPage> {
         ? (maxLat - minLat)
         : (maxLng - minLng);
 
-    if (span > 15) {
-      return 5;
-    }
-    if (span > 8) {
-      return 6;
-    }
-    if (span > 4) {
-      return 7;
-    }
-    if (span > 2) {
-      return 8;
-    }
-    if (span > 1) {
-      return 9;
-    }
-    if (span > 0.4) {
-      return 10;
-    }
-    if (span > 0.15) {
-      return 11;
-    }
+    if (span > 15) return 5;
+    if (span > 8) return 6;
+    if (span > 4) return 7;
+    if (span > 2) return 8;
+    if (span > 1) return 9;
+    if (span > 0.4) return 10;
+    if (span > 0.15) return 11;
     return 12.5;
   }
 
-  Widget _buildDriverMapCard() {
-    final possibleOrders = _pendingConfirmationOrders;
-    final assignedOrders = _activeRoute;
+  // ── Actions ──────────────────────────────────────────────────────
 
-    final LatLng? driverPoint = _driverLocation == null
+  Future<void> _respondToPickup(OrderModel order, bool accepted) async {
+    final orderProv = context.read<OrderProvider>();
+
+    try {
+      final result = await orderProv.respondToPickup(
+        orderId: order.id,
+        accepted: accepted,
+      );
+
+      if (accepted) {
+        setState(() {
+          _lastAcceptedExtraMinutes = result.extraMinutes;
+        });
+      }
+
+      if (!mounted) return;
+
+      final extraText = result.extraMinutes == null
+          ? ''
+          : ' Extra: ${result.extraMinutes!.toStringAsFixed(1)} min.';
+      final totalText = result.totalMinutes == null
+          ? ''
+          : ' Ruta total: ${result.totalMinutes!.toStringAsFixed(1)} min.';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            accepted
+                ? 'Pedido aceptado.$extraText$totalText'
+                : 'Pedido rechazado.$totalText',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al responder: $error')),
+      );
+    }
+  }
+
+  Future<void> _completeOrder(OrderModel order) async {
+    final orderProv = context.read<OrderProvider>();
+    try {
+      await orderProv.updateOrderStatus(
+        orderId: order.id,
+        status: 'completed',
+        actionLabel: 'completado',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al actualizar pedido: $error')),
+      );
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    final driverProv = context.read<DriverProvider>();
+    try {
+      final position = await driverProv.getCurrentLocation();
+      if (position != null && mounted) {
+        _mapController.move(
+          LatLng(position.latitude, position.longitude),
+          14.5,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error de ubicación: $error')),
+      );
+    }
+  }
+
+  // ── Computed lists from providers ────────────────────────────────
+
+  List<OrderModel> _pendingConfirmationOrders(
+    List<OrderModel> orders,
+    String userId,
+  ) {
+    return orders
+        .where((o) => o.assignedDriverId == userId && o.status == 'assigned')
+        .toList();
+  }
+
+  List<OrderModel> _activeRoute(
+    List<OrderModel> orders,
+    List<OrderModel> routeOrders,
+    String userId,
+  ) {
+    final fromRoute = routeOrders
+        .where((o) => o.assignedDriverId == userId && o.status == 'in_progress')
+        .toList();
+
+    final activeOutsideRoute = orders
+        .where(
+          (o) =>
+              o.assignedDriverId == userId &&
+              o.status == 'in_progress' &&
+              !fromRoute.any((r) => r.id == o.id),
+        )
+        .toList();
+
+    return [...fromRoute, ...activeOutsideRoute];
+  }
+
+  // ── Map card ─────────────────────────────────────────────────────
+
+  Widget _buildDriverMapCard({
+    required DriverLocation? driverLocation,
+    required DriverRoutePlan? routePlan,
+    required List<OrderModel> pendingOrders,
+    required List<OrderModel> activeOrders,
+    required RouteProvider routeProv,
+  }) {
+    final LatLng? driverPoint = driverLocation == null
         ? null
-        : LatLng(_driverLocation!.lat, _driverLocation!.lng);
+        : LatLng(driverLocation.lat, driverLocation.lng);
 
     final allPoints = <LatLng>[
       if (driverPoint != null) driverPoint,
-      ...assignedOrders.map((order) => LatLng(order.lat, order.lng)),
-      ...possibleOrders.map((order) => LatLng(order.lat, order.lng)),
+      ...activeOrders.map((o) => LatLng(o.lat, o.lng)),
+      ...pendingOrders.map((o) => LatLng(o.lat, o.lng)),
     ];
 
     if (allPoints.isEmpty) {
-      return const _EmptyCard(
+      return const AppEmptyCard(
         message: 'No hay ubicaciones para mostrar en mapa todavia.',
       );
     }
@@ -513,12 +248,12 @@ class _DriverPageState extends State<DriverPage> {
     final center = _mapCenter(allPoints);
     final zoom = _zoomForPoints(allPoints);
 
-    final routePoints = _routePlan == null
+    final routePoints = routePlan == null
         ? const <LatLng>[]
-        : _isSparseRouteGeometry(_routePlan!)
+        : routeProv.isSparseRouteGeometry(routePlan)
             ? const <LatLng>[]
-            : _routePlan!.routeGeometry
-                .map((point) => LatLng(point.lat, point.lng))
+            : routePlan.routeGeometry
+                .map((p) => LatLng(p.lat, p.lng))
                 .toList();
 
     final polylines = <Polyline>[
@@ -536,28 +271,28 @@ class _DriverPageState extends State<DriverPage> {
           point: driverPoint,
           width: 48,
           height: 48,
-          child: const _MapPinIcon(
+          child: const AppMapPinIcon(
             icon: Icons.local_shipping,
             color: _driverColor,
           ),
         ),
-      for (final entry in assignedOrders.asMap().entries)
+      for (final entry in activeOrders.asMap().entries)
         Marker(
           point: LatLng(entry.value.lat, entry.value.lng),
           width: 40,
           height: 40,
-          child: _MapPinIcon(
+          child: AppMapPinIcon(
             icon: _orderTypeIcon(entry.value.type),
             color: _assignedColor,
             stopNumber: entry.key + 1,
           ),
         ),
-      for (final order in possibleOrders)
+      for (final order in pendingOrders)
         Marker(
           point: LatLng(order.lat, order.lng),
           width: 40,
           height: 40,
-          child: _MapPinIcon(
+          child: AppMapPinIcon(
             icon: _orderTypeIcon(order.type),
             color: _possibleColor.withValues(alpha: 0.55),
           ),
@@ -600,14 +335,16 @@ class _DriverPageState extends State<DriverPage> {
               spacing: 14,
               runSpacing: 8,
               children: const [
-                _LegendItem(label: 'Mi ubicacion', color: _driverColor),
-                _LegendItem(label: 'Pedidos asignados', color: _assignedColor),
-                _LegendItem(label: 'Pedidos posibles', color: _possibleColor),
-                _OrderTypeLegendItem(
+                AppLegendItem(label: 'Mi ubicacion', color: _driverColor),
+                AppLegendItem(
+                    label: 'Pedidos asignados', color: _assignedColor),
+                AppLegendItem(
+                    label: 'Pedidos posibles', color: _possibleColor),
+                AppOrderTypeLegendItem(
                   icon: Icons.inventory_2_rounded,
                   label: 'Pickup',
                 ),
-                _OrderTypeLegendItem(
+                AppOrderTypeLegendItem(
                   icon: Icons.subdirectory_arrow_right_rounded,
                   label: 'Delivery',
                 ),
@@ -619,9 +356,9 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
-  Widget _buildRouteMetricsCard() {
-    final totalMinutes = _routePlan?.totalMinutes ?? 0.0;
-    final totalDistance = _routePlan?.totalDistanceKm ?? 0.0;
+  Widget _buildRouteMetricsCard(DriverRoutePlan? routePlan) {
+    final totalMinutes = routePlan?.totalMinutes ?? 0.0;
+    final totalDistance = routePlan?.totalDistanceKm ?? 0.0;
 
     return Card(
       child: Padding(
@@ -630,21 +367,22 @@ class _DriverPageState extends State<DriverPage> {
           spacing: 12,
           runSpacing: 10,
           children: [
-            _MetricPill(
+            AppMetricPill(
               icon: Icons.schedule,
               label: 'Tiempo total estimado',
               value: '${totalMinutes.toStringAsFixed(1)} min',
             ),
-            _MetricPill(
+            AppMetricPill(
               icon: Icons.route,
               label: 'Distancia estimada',
               value: '${totalDistance.toStringAsFixed(2)} km',
             ),
             if (_lastAcceptedExtraMinutes != null)
-              _MetricPill(
+              AppMetricPill(
                 icon: Icons.add_road,
                 label: 'Ultimo pedido aceptado añadió',
-                value: '${_lastAcceptedExtraMinutes!.toStringAsFixed(1)} min',
+                value:
+                    '${_lastAcceptedExtraMinutes!.toStringAsFixed(1)} min',
               ),
           ],
         ),
@@ -652,10 +390,11 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
-  Widget _buildOrdersColumns() {
-    final pendingOrders = _pendingConfirmationOrders;
-    final activeOrders = _activeRoute;
-
+  Widget _buildOrdersColumns({
+    required List<OrderModel> pendingOrders,
+    required List<OrderModel> activeOrders,
+    required bool isLoading,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: LayoutBuilder(
@@ -676,15 +415,16 @@ class _DriverPageState extends State<DriverPage> {
                       count: pendingOrders.length,
                       children: pendingOrders.isEmpty
                           ? const [
-                              _EmptyCard(
-                                  message:
-                                      'No hay pedidos asignados pendientes de confirmacion'),
+                              AppEmptyCard(
+                                message:
+                                    'No hay pedidos asignados pendientes de confirmacion',
+                              ),
                             ]
                           : pendingOrders
                               .asMap()
                               .entries
                               .map((entry) => _buildAssignedOrderCard(
-                                  entry.key + 1, entry.value))
+                                  entry.key + 1, entry.value, isLoading))
                               .toList(),
                     ),
                   ),
@@ -695,14 +435,14 @@ class _DriverPageState extends State<DriverPage> {
                       count: activeOrders.length,
                       children: activeOrders.isEmpty
                           ? const [
-                              _EmptyCard(
+                              AppEmptyCard(
                                   message: 'No hay pedidos en curso'),
                             ]
                           : activeOrders
                               .asMap()
                               .entries
                               .map((entry) => _buildAssignedOrderCard(
-                                  entry.key + 1, entry.value))
+                                  entry.key + 1, entry.value, isLoading))
                               .toList(),
                     ),
                   ),
@@ -715,24 +455,147 @@ class _DriverPageState extends State<DriverPage> {
     );
   }
 
+  Widget _buildAssignedOrderCard(int index, OrderModel order, bool isLoading) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundColor: AppTheme.secondary.withValues(alpha: 0.1),
+                  child: Text(
+                    index.toString(),
+                    style: const TextStyle(
+                      color: AppTheme.secondary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (order.name != null)
+                        Text(
+                          order.name!,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      Text(
+                        order.address,
+                        style: TextStyle(
+                          fontWeight: order.name != null
+                              ? FontWeight.w400
+                              : FontWeight.w600,
+                          fontSize: order.name != null ? 12 : 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AppStatusChip(status: order.status),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(_orderTypeIcon(order.type), size: 18, color: AppTheme.tertiary),
+                const SizedBox(width: 6),
+                Text('${_orderTypeLabel(order.type)} - ${order.id}'),
+              ],
+            ),
+            if (order.estimatedExtraMinutes != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Extra estimado: ${order.estimatedExtraMinutes!.toStringAsFixed(1)} min',
+              ),
+            ],
+            const SizedBox(height: 12),
+            if (order.status == 'assigned')
+              Row(
+                children: [
+                  Expanded(
+                    child: AppButton(
+                      onPressed: isLoading
+                          ? null
+                          : () => _respondToPickup(order, false),
+                      icon: Icons.close,
+                      text: 'Rechazar',
+                      variant: AppButtonVariant.outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: AppButton(
+                      onPressed: isLoading
+                          ? null
+                          : () => _respondToPickup(order, true),
+                      icon: Icons.check,
+                      text: 'Aceptar',
+                    ),
+                  ),
+                ],
+              ),
+            if (order.status == 'in_progress')
+              SizedBox(
+                width: double.infinity,
+                child: AppButton(
+                  onPressed:
+                      isLoading ? null : () => _completeOrder(order),
+                  text: 'Completar parada',
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Build ────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    if (_isLoading && _orders.isEmpty) {
+    final driverProv = context.watch<DriverProvider>();
+    final orderProv = context.watch<OrderProvider>();
+    final routeProv = context.watch<RouteProvider>();
+
+    final user = driverProv.user;
+    final driverLocation = driverProv.driverLocation;
+    final routePlan = driverProv.routePlan;
+    final orders = orderProv.orders;
+    final routeOrders = driverProv.routeOrders;
+    final events = driverProv.events;
+    final isLoading = orderProv.isLoading || driverProv.isLoading;
+    final error = driverProv.error ?? orderProv.error;
+
+    final pendingOrders = _pendingConfirmationOrders(orders, user.id);
+    final activeOrders = _activeRoute(orders, routeOrders, user.id);
+
+    if (isLoading && orders.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_error != null && _orders.isEmpty) {
+    if (error != null && orders.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('No se pudo cargar la informacion\n$_error'),
+              Text('No se pudo cargar la informacion\n$error'),
               const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _loadData,
-                child: const Text('Reintentar'),
+              AppButton(
+                onPressed: () {
+                  driverProv.loadData();
+                  orderProv.loadOrders();
+                },
+                text: 'Reintentar',
               ),
             ],
           ),
@@ -741,15 +604,27 @@ class _DriverPageState extends State<DriverPage> {
     }
 
     return RefreshIndicator(
-      onRefresh: () => _loadData(showLoader: false),
+      onRefresh: () async {
+        await Future.wait([
+          driverProv.loadData(),
+          orderProv.loadOrders(),
+        ]);
+      },
       child: ListView(
         padding: const EdgeInsets.only(top: 12, bottom: 24),
         children: [
-          _SectionTitle(title: 'Mapa operativo', trailing: ''),
-          _buildDriverMapCard(),
-          _SectionTitle(title: 'Estimacion de ruta', trailing: ''),
-          _buildRouteMetricsCard(),
-          _SectionTitle(title: 'Ubicación real', trailing: ''),
+          const AppSectionTitle(title: 'Mapa operativo', trailing: ''),
+          _buildDriverMapCard(
+            driverLocation: driverLocation,
+            routePlan: routePlan,
+            pendingOrders: pendingOrders,
+            activeOrders: activeOrders,
+            routeProv: routeProv,
+          ),
+          const AppSectionTitle(
+              title: 'Estimacion de ruta', trailing: ''),
+          _buildRouteMetricsCard(routePlan),
+          const AppSectionTitle(title: 'Ubicación real', trailing: ''),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -761,36 +636,44 @@ class _DriverPageState extends State<DriverPage> {
                       const Icon(Icons.place, color: _assignedColor),
                       const SizedBox(width: 8),
                       Text(
-                        _driverLocation != null
-                            ? 'Última ubicación: ${_driverLocation!.lat.toStringAsFixed(6)}, ${_driverLocation!.lng.toStringAsFixed(6)}'
+                        driverLocation != null
+                            ? 'Última ubicación: ${driverLocation.lat.toStringAsFixed(6)}, ${driverLocation.lng.toStringAsFixed(6)}'
                             : 'Ubicación no obtenida todavía',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
+                        style:
+                            const TextStyle(fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
-                  if (_driverLocation != null && _driverLocation!.updatedAt != null) ...[
+                  if (driverLocation != null &&
+                      driverLocation.updatedAt != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Actualizado: ${_driverLocation!.updatedAt!.length >= 19 ? _driverLocation!.updatedAt!.substring(11, 19) : _driverLocation!.updatedAt}',
-                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                      'Actualizado: ${driverLocation.updatedAt!.length >= 19 ? driverLocation.updatedAt!.substring(11, 19) : driverLocation.updatedAt}',
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.black54),
                     ),
                   ],
-
                 ],
               ),
             ),
           ),
-          const _SectionTitle(
+          const AppSectionTitle(
             title: 'Pedidos en columnas',
             trailing: '',
           ),
-          _buildOrdersColumns(),
-          _SectionTitle(
-              title: 'Eventos tiempo real', trailing: '${_events.length}'),
-          if (_events.isEmpty)
-            const _EmptyCard(message: 'Sin eventos recientes')
+          _buildOrdersColumns(
+            pendingOrders: pendingOrders,
+            activeOrders: activeOrders,
+            isLoading: isLoading,
+          ),
+          AppSectionTitle(
+            title: 'Eventos tiempo real',
+            trailing: '${events.length}',
+          ),
+          if (events.isEmpty)
+            const AppEmptyCard(message: 'Sin eventos recientes')
           else
-            ..._events.map(
+            ...events.map(
               (event) => Card(
                 child: ListTile(
                   dense: true,
@@ -799,96 +682,6 @@ class _DriverPageState extends State<DriverPage> {
               ),
             ),
         ],
-      ),
-    );
-  }
-
-
-  Widget _buildAssignedOrderCard(int index, OrderModel order) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 13,
-                  backgroundColor: Colors.black.withValues(alpha: 0.08),
-                  child: Text(index.toString()),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (order.name != null)
-                        Text(
-                          order.name!,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      Text(
-                        order.address,
-                        style: TextStyle(
-                          fontWeight: order.name != null ? FontWeight.w400 : FontWeight.w600,
-                          fontSize: order.name != null ? 12 : 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _StatusChip(status: order.status),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(_orderTypeIcon(order.type), size: 18),
-                const SizedBox(width: 6),
-                Text('${_orderTypeLabel(order.type)} - ${order.id}'),
-              ],
-            ),
-            if (order.estimatedExtraMinutes != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                  'Extra estimado: ${order.estimatedExtraMinutes!.toStringAsFixed(1)} min'),
-            ],
-            const SizedBox(height: 12),
-            if (order.status == 'assigned')
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isLoading
-                          ? null
-                          : () => _respondToPickup(order, false),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Rechazar'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _isLoading
-                          ? null
-                          : () => _respondToPickup(order, true),
-                      icon: const Icon(Icons.check),
-                      label: const Text('Aceptar'),
-                    ),
-                  ),
-                ],
-              ),
-            if (order.status == 'in_progress')
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _isLoading ? null : () => _completeOrder(order),
-                  child: const Text('Completar parada'),
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }
@@ -922,7 +715,8 @@ class _OrderColumn extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(20),
@@ -934,268 +728,6 @@ class _OrderColumn extends StatelessWidget {
         ),
         ...children,
       ],
-    );
-  }
-}
-
-class _MapPinIcon extends StatelessWidget {
-  const _MapPinIcon({
-    required this.icon,
-    required this.color,
-    this.stopNumber,
-  });
-
-  final IconData icon;
-  final Color color;
-  final int? stopNumber;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: color, width: 2.4),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (stopNumber == null) Icon(icon, size: 23, color: color),
-          if (stopNumber != null)
-            Text(
-              stopNumber.toString(),
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w800,
-                fontSize: 15,
-              ),
-            ),
-          if (stopNumber != null)
-            Positioned(
-              right: 1,
-              bottom: 1,
-              child: Icon(
-                icon,
-                size: 11,
-                color: color.withValues(alpha: 0.85),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MetricPill extends StatelessWidget {
-  const _MetricPill({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.black.withValues(alpha: 0.68),
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LegendItem extends StatelessWidget {
-  const _LegendItem({
-    required this.label,
-    required this.color,
-  });
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(6),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(label),
-      ],
-    );
-  }
-}
-
-class _OrderTypeLegendItem extends StatelessWidget {
-  const _OrderTypeLegendItem({
-    required this.icon,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16),
-        const SizedBox(width: 6),
-        Text(label),
-      ],
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: _colorForStatus(status).withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Text(
-        _labelForStatus(status),
-        style: TextStyle(
-          color: _colorForStatus(status),
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
-      ),
-    );
-  }
-
-  Color _colorForStatus(String value) {
-    switch (value) {
-      case 'pending':
-        return const Color(0xFFB45309);
-      case 'assigned':
-        return const Color(0xFF1D4ED8);
-      case 'in_progress':
-        return const Color(0xFF0F766E);
-      case 'completed':
-        return const Color(0xFF166534);
-      case 'rejected':
-        return const Color(0xFFB91C1C);
-      default:
-        return Colors.black54;
-    }
-  }
-
-  String _labelForStatus(String value) {
-    switch (value) {
-      case 'pending':
-        return 'Pendiente';
-      case 'assigned':
-        return 'Asignado';
-      case 'in_progress':
-        return 'En curso';
-      case 'completed':
-        return 'Completado';
-      case 'rejected':
-        return 'Rechazado';
-      default:
-        return value;
-    }
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.title,
-    required this.trailing,
-  });
-
-  final String title;
-  final String trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-          ),
-          const Spacer(),
-          if (trailing.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Text(trailing),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyCard extends StatelessWidget {
-  const _EmptyCard({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(message),
-      ),
     );
   }
 }

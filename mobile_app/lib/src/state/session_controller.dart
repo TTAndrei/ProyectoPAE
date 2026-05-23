@@ -1,18 +1,16 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/app_user.dart';
-import '../services/api_client.dart';
-import '../services/auth_store.dart';
+import '../services/auth_service.dart';
 
+/// Manages the user session: login, logout, session restore.
+/// This replaces the old SessionController.
 class SessionController extends ChangeNotifier {
   SessionController({
-    required ApiClient apiClient,
-    required AuthStore authStore,
-  })  : _apiClient = apiClient,
-        _authStore = authStore;
+    required AuthService authService,
+  }) : _authService = authService;
 
-  final ApiClient _apiClient;
-  final AuthStore _authStore;
+  final AuthService _authService;
 
   bool _isInitializing = true;
   bool _isLoading = false;
@@ -32,28 +30,13 @@ class SessionController extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    final storedSession = await _authStore.readSession();
-    if (storedSession == null) {
+    final session = await _authService.restoreSession();
+    if (session != null) {
+      _token = session.token;
+      _user = session.user;
+    } else {
       _token = null;
       _user = null;
-      _isInitializing = false;
-      notifyListeners();
-      return;
-    }
-
-    _token = storedSession.token;
-    _user = storedSession.user;
-
-    try {
-      final currentUser = await _apiClient.getCurrentUser(token: storedSession.token);
-      _user = currentUser;
-      await _authStore.saveSession(
-        AuthSession(token: storedSession.token, user: currentUser),
-      );
-    } catch (_) {
-      _token = null;
-      _user = null;
-      await _authStore.clearSession();
     }
 
     _isInitializing = false;
@@ -69,10 +52,12 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final session = await _apiClient.login(username: username, password: password);
+      final session = await _authService.login(
+        username: username,
+        password: password,
+      );
       _token = session.token;
       _user = session.user;
-      await _authStore.saveSession(session);
       return true;
     } catch (error) {
       _errorMessage = error.toString();
@@ -88,6 +73,6 @@ class SessionController extends ChangeNotifier {
     _user = null;
     _errorMessage = null;
     notifyListeners();
-    await _authStore.clearSession();
+    await _authService.logout();
   }
 }

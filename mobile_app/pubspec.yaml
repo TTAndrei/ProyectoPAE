@@ -17,6 +17,7 @@ dependencies:
   shared_preferences: ^2.2.3
   web_socket_channel: ^3.0.1
   geolocator: ^14.0.2
+  google_fonts: ^8.1.0
 
 dev_dependencies:
   flutter_test:
