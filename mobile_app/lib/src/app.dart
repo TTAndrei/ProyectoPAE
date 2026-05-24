@@ -7,8 +7,8 @@ import 'services/order_service.dart';
 import 'services/route_service.dart';
 import 'state/session_controller.dart';
 import 'theme/app_theme.dart';
-import 'ui/home_page.dart';
-import 'ui/login_page.dart';
+import 'ui/screens/home_page.dart';
+import 'ui/screens/login_page.dart';
 
 class PaeMobileApp extends StatelessWidget {
   const PaeMobileApp({

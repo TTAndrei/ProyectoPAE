@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../config/app_config.dart';
-import '../providers/driver_provider.dart';
-import '../providers/order_provider.dart';
-import '../providers/route_provider.dart';
-import '../services/driver_service.dart';
-import '../services/order_service.dart';
-import '../services/route_service.dart';
-import '../state/session_controller.dart';
-import '../theme/app_theme.dart';
+import '../../config/app_config.dart';
+import '../../providers/driver_provider.dart';
+import '../../providers/order_provider.dart';
+import '../../providers/route_provider.dart';
+import '../../services/driver_service.dart';
+import '../../services/order_service.dart';
+import '../../services/route_service.dart';
+import '../../state/session_controller.dart';
+import '../../theme/app_theme.dart';
 import 'central_page.dart';
-import 'driver_page.dart';
+import '../widgets/driver_nav_bar.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -98,7 +98,7 @@ class HomePage extends StatelessWidget {
                   create: (_) => RouteProvider(routeService: routeService),
                 ),
               ],
-              child: const DriverPage(),
+              child: const DriverNavBar(),
             ),
     );
   }

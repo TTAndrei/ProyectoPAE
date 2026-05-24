@@ -3,18 +3,18 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
-import '../models/driver_model.dart';
-import '../models/order_model.dart';
-import '../providers/driver_provider.dart';
-import '../providers/order_provider.dart';
-import '../providers/route_provider.dart';
-import '../services/api_client.dart';
-import '../theme/app_theme.dart';
-import 'widgets/app_button.dart';
-import 'widgets/app_section_title.dart';
-import 'widgets/app_empty_card.dart';
-import 'widgets/app_map_pin_icon.dart';
-import 'widgets/app_legend_items.dart';
+import '../../models/driver_model.dart';
+import '../../models/order_model.dart';
+import '../../providers/driver_provider.dart';
+import '../../providers/order_provider.dart';
+import '../../providers/route_provider.dart';
+import '../../services/api_client.dart';
+import '../../theme/app_theme.dart';
+import '../widgets/app_button.dart';
+import '../widgets/app_section_title.dart';
+import '../widgets/app_empty_card.dart';
+import '../widgets/app_map_pin_icon.dart';
+import '../widgets/app_legend_items.dart';
 
 class CentralPage extends StatefulWidget {
   const CentralPage({super.key});
@@ -295,7 +295,7 @@ class _CentralPageState extends State<CentralPage> {
     ];
 
     if (points.isEmpty) {
-      return const AppEmptyCard(
+      return AppEmptyCard(
         message:
             'No hay ubicaciones de conductores/pedidos para mostrar en mapa.',
       );
@@ -569,7 +569,7 @@ class _CentralPageState extends State<CentralPage> {
             trailing: '${pendingOrders.length}',
           ),
           if (pendingOrders.isEmpty)
-            const AppEmptyCard(message: 'No hay pedidos pendientes')
+            AppEmptyCard(message: 'No hay pedidos pendientes')
           else
             ...pendingOrders.map(
               (order) => _buildPendingOrderCard(order, drivers, isLoading),
@@ -579,7 +579,7 @@ class _CentralPageState extends State<CentralPage> {
             trailing: '${activeOrders.length}',
           ),
           if (activeOrders.isEmpty)
-            const AppEmptyCard(message: 'No hay pedidos activos')
+            AppEmptyCard(message: 'No hay pedidos activos')
           else
             ...activeOrders.map(
               (order) => Card(
@@ -602,7 +602,7 @@ class _CentralPageState extends State<CentralPage> {
             trailing: '${drivers.length}',
           ),
           if (drivers.isEmpty)
-            const AppEmptyCard(message: 'No hay repartidores')
+            AppEmptyCard(message: 'No hay repartidores')
           else
             ...drivers.map(
               (driver) => Card(
@@ -621,7 +621,7 @@ class _CentralPageState extends State<CentralPage> {
             trailing: '${events.length}',
           ),
           if (events.isEmpty)
-            const AppEmptyCard(message: 'Sin eventos recientes')
+            AppEmptyCard(message: 'Sin eventos recientes')
           else
             ...events.map(
               (event) => Card(
