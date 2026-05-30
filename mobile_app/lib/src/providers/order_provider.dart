@@ -4,34 +4,42 @@ import 'package:flutter/material.dart';
 import '../models/order_model.dart';
 import '../services/order_service.dart';
 import '../services/route_service.dart';
-import '../services/ws_service.dart';
 
 /// Manages order state: fetching, creating, assigning, and filtering orders.
+///
+/// NOTE: This provider does NOT open its own WebSocket connection.
+/// Instead, it relies on an external refresh stream (from DriverProvider or
+/// CentralProvider) to trigger order reloads. This avoids the bug where
+/// multiple WS connections with the same token overwrite each other in the
+/// backend's _repartidores dict.
 class OrderProvider extends ChangeNotifier {
   OrderProvider({
     required OrderService orderService,
     required RouteService routeService,
     required String token,
-    required String apiBaseUrl,
+    String? apiBaseUrl,
+    Stream<void>? refreshStream,
   })  : _orderService = orderService,
         _routeService = routeService,
-        _token = token,
-        _apiBaseUrl = apiBaseUrl {
+        _token = token {
     _loadOrders();
-    _connectWs();
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 8),
       (_) => _loadOrders(showLoader: false),
     );
+    if (refreshStream != null) {
+      _wsRefreshSub = refreshStream.listen((_) {
+        _loadOrders(showLoader: false);
+      });
+    }
   }
 
   final OrderService _orderService;
   final RouteService _routeService;
   final String _token;
-  final String _apiBaseUrl;
-  final WsService _wsService = WsService();
 
   Timer? _refreshTimer;
+  StreamSubscription<void>? _wsRefreshSub;
   bool _isLoading = false;
   String? _error;
 
@@ -63,28 +71,8 @@ class OrderProvider extends ChangeNotifier {
   @override
   void dispose() {
     _refreshTimer?.cancel();
-    _wsService.disconnect();
+    _wsRefreshSub?.cancel();
     super.dispose();
-  }
-
-  // ── WebSocket ────────────────────────────────────────────────────
-  void _connectWs() {
-    _wsService.connect(
-      apiBaseUrl: _apiBaseUrl,
-      token: _token,
-      onMessage: (payload) {
-        final type = payload['type']?.toString() ?? 'event';
-        _pushEvent('WS: $type');
-
-        if (type == 'driver:location:update' ||
-            type == 'pickup:response' ||
-            type == 'pickup:notification') {
-          _loadOrders(showLoader: false);
-        }
-      },
-      onError: (error) => _pushEvent('WS error: $error'),
-      onDone: () => _pushEvent('WS disconnected'),
-    );
   }
 
   void _pushEvent(String value) {
@@ -189,11 +177,7 @@ class OrderProvider extends ChangeNotifier {
         driverId: driverId,
       );
 
-      _wsService.send({
-        'type': 'central:pickup:notify',
-        'order_id': orderId,
-        'driver_id': driverId,
-      });
+      // WS notification is already sent by the backend HTTP endpoint
 
       _pushEvent(
         'Asignado ${result.order.id} a $driverId '
@@ -221,11 +205,7 @@ class OrderProvider extends ChangeNotifier {
         accepted: accepted,
       );
 
-      _wsService.send({
-        'type': 'driver:pickup:response',
-        'order_id': orderId,
-        'accepted': accepted,
-      });
+      // WS notification is already sent by the backend HTTP endpoint
 
       _pushEvent('Pedido $orderId: ${accepted ? 'aceptado' : 'rechazado'}');
       await _loadOrders(showLoader: false);

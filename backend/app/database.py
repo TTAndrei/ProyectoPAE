@@ -43,9 +43,9 @@ def _sembrar_datos(session):
         return
 
     usuarios = [
-        {"id": "central-1", "username": "central", "password_hash": contexto_contrasena.hash("central123"), "role": "central", "name": "Central Despacho"},
-        {"id": "driver-1", "username": "driver1", "password_hash": contexto_contrasena.hash("driver123"), "role": "repartidor", "name": "Carlos García"},
-        {"id": "driver-2", "username": "driver2", "password_hash": contexto_contrasena.hash("driver123"), "role": "repartidor", "name": "María López"},
+        {"id": "central-1", "username": "central", "password_hash": contexto_contrasena.hash("central123"), "role": "central", "name": "Central Despacho", "is_available": False},
+        {"id": "driver-1", "username": "driver1", "password_hash": contexto_contrasena.hash("driver123"), "role": "repartidor", "name": "Carlos García", "is_available": False},
+        {"id": "driver-2", "username": "driver2", "password_hash": contexto_contrasena.hash("driver123"), "role": "repartidor", "name": "María López", "is_available": False},
     ]
     for u in usuarios:
         session.run("""
@@ -55,23 +55,25 @@ def _sembrar_datos(session):
                 password_hash: $password_hash, 
                 role: $role, 
                 name: $name,
+                is_available: $is_available,
                 created_at: datetime()
             })
         """, u)
 
     pedidos = [
-        {"id": "order-1", "type": "delivery", "address": "Calle Gran Via 1, Madrid", "lat": 40.4168, "lng": -3.7038, "status": "assigned", "driver_id": "driver-1"},
-        {"id": "order-2", "type": "delivery", "address": "Calle Alcalá 50, Madrid", "lat": 40.4189, "lng": -3.6929, "status": "assigned", "driver_id": "driver-1"},
-        {"id": "order-3", "type": "delivery", "address": "Paseo Castellana 100, Madrid", "lat": 40.4356, "lng": -3.6882, "status": "assigned", "driver_id": "driver-1"},
-        {"id": "order-4", "type": "delivery", "address": "Calle Serrano 20, Madrid", "lat": 40.4259, "lng": -3.6887, "status": "assigned", "driver_id": "driver-2"},
-        {"id": "order-5", "type": "delivery", "address": "Calle Goya 30, Madrid", "lat": 40.4238, "lng": -3.6797, "status": "assigned", "driver_id": "driver-2"},
-        {"id": "order-6", "type": "pickup", "address": "Calle Fuencarral 80, Madrid", "lat": 40.4277, "lng": -3.7025, "status": "pending", "driver_id": None},
+        {"id": "order-1", "type": "delivery", "name": "Restaurante El Prado", "address": "Calle Iglesia 15, Pineda de Mar", "lat": 41.6262, "lng": 2.6908, "status": "assigned", "driver_id": "driver-1"},
+        {"id": "order-2", "type": "delivery", "name": "Librería Central", "address": "Calle Mayor 45, Pineda de Mar", "lat": 41.6258, "lng": 2.6875, "status": "assigned", "driver_id": "driver-1"},
+        {"id": "order-3", "type": "delivery", "name": "Farmacia Serrano", "address": "Avenida Montserrat 8, Pineda de Mar", "lat": 41.6291, "lng": 2.6844, "status": "pending", "driver_id": None},
+        {"id": "order-4", "type": "delivery", "name": "Tienda Zara", "address": "Calle Iglesia 120, Calella", "lat": 41.6145, "lng": 2.6591, "status": "pending", "driver_id": None},
+        {"id": "order-5", "type": "delivery", "name": "Supermercado Día", "address": "Calle Riera 30, Calella", "lat": 41.6128, "lng": 2.6548, "status": "pending", "driver_id": None},
+        {"id": "order-6", "type": "pickup", "name": "Cafetería Starbucks", "address": "Paseo Marítimo 50, Pineda de Mar", "lat": 41.6235, "lng": 2.6932, "status": "pending", "driver_id": None},
     ]
     for p in pedidos:
         session.run("""
             CREATE (o:Order {
                 id: $id, 
                 type: $type, 
+                name: $name,
                 address: $address, 
                 lat: $lat, 
                 lng: $lng, 
@@ -86,8 +88,7 @@ def _sembrar_datos(session):
         """, p)
 
     rutas = [
-        {"id": "route-1", "driver_id": "driver-1", "order_ids": ["order-1", "order-2", "order-3"], "status": "active"},
-        {"id": "route-2", "driver_id": "driver-2", "order_ids": ["order-4", "order-5"], "status": "active"},
+        {"id": "route-1", "driver_id": "driver-1", "order_ids": ["order-1", "order-2"], "status": "active"},
     ]
     for r in rutas:
         session.run("""
@@ -102,8 +103,8 @@ def _sembrar_datos(session):
         """, r)
 
     ubicaciones = [
-        {"driver_id": "driver-1", "lat": 40.4168, "lng": -3.7038},
-        {"driver_id": "driver-2", "lat": 40.4259, "lng": -3.6887},
+        {"driver_id": "driver-1", "lat": 41.6260, "lng": 2.6900},
+        {"driver_id": "driver-2", "lat": 41.6140, "lng": 2.6580},
     ]
     for loc in ubicaciones:
         session.run("""

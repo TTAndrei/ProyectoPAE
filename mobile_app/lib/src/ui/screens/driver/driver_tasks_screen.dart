@@ -7,6 +7,7 @@ import '../../../providers/order_provider.dart';
 import '../../../theme/app_theme.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_empty_card.dart';
+import '../../widgets/order_details_dialog.dart';
 
 class DriverTasksScreen extends StatefulWidget {
   const DriverTasksScreen({
@@ -114,8 +115,35 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
   }
 
   void _openOrderDetails(BuildContext context, OrderModel order) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Ver detalles del pedido ${order.id}')),
+    final orderProv = context.read<OrderProvider>();
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => OrderDetailsDialog(
+        order: order,
+        onComplete: () async {
+          final messenger = ScaffoldMessenger.of(context);
+          try {
+            await orderProv.updateOrderStatus(
+              orderId: order.id,
+              status: 'completed',
+              actionLabel: order.type == 'pickup' ? 'recogido' : 'entregado',
+            );
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text(
+                  order.type == 'pickup'
+                      ? '¡Pedido marcado como recogido!'
+                      : '¡Pedido marcado como entregado!',
+                ),
+              ),
+            );
+          } catch (e) {
+            messenger.showSnackBar(
+              SnackBar(content: Text('Error al actualizar el pedido: $e')),
+            );
+          }
+        },
+      ),
     );
   }
 
@@ -644,137 +672,140 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
       );
     } else {
       // Regular Style (Grey background container)
-      return Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3F0EF),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Index number
-                  Text(
-                    orderNumStr,
-                    style: TextStyle(
-                      fontFamily: 'Manrope',
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade600,
-                      letterSpacing: -1,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // Details
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: chipBg,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                typeLabel.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: chipText,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            if (order.estimatedExtraMinutes != null && !isCompleted)
-                              Text(
-                                'Extra: ${order.estimatedExtraMinutes!.toStringAsFixed(1)} min',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          order.address,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: 'Manrope',
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2F2E2E),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'ID Paquete: #${order.id} • ${order.name ?? 'Express'}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Right chevron or custom action
-                  if (!isCompleted)
-                    Icon(
-                      Icons.chevron_right,
-                      color: Colors.grey.shade400,
-                      size: 24,
-                    )
-                  else
-                    const Icon(
-                      Icons.check_circle_outline,
-                      color: Colors.green,
-                      size: 24,
-                    ),
-                ],
-              ),
-              // Confirmation Action Buttons if status is assigned (even in regular style)
-              if (order.status == 'assigned') ...[
-                const SizedBox(height: 12),
+      return GestureDetector(
+        onTap: () => _openOrderDetails(context, order),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F0EF),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: AppButton(
-                        onPressed: isLoading
-                            ? null
-                            : () => _respondToPickup(context, order, false),
-                        icon: Icons.close,
-                        text: 'Rechazar',
-                        variant: AppButtonVariant.outlined,
+                    // Index number
+                    Text(
+                      orderNumStr,
+                      style: TextStyle(
+                        fontFamily: 'Manrope',
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade600,
+                        letterSpacing: -1,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 16),
+                    // Details
                     Expanded(
-                      child: AppButton(
-                        onPressed: isLoading
-                            ? null
-                            : () => _respondToPickup(context, order, true),
-                        icon: Icons.check,
-                        text: 'Aceptar',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: chipBg,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  typeLabel.toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: chipText,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              if (order.estimatedExtraMinutes != null && !isCompleted)
+                                Text(
+                                  'Extra: ${order.estimatedExtraMinutes!.toStringAsFixed(1)} min',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            order.address,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'Manrope',
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2F2E2E),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'ID Paquete: #${order.id} • ${order.name ?? 'Express'}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    // Right chevron or custom action
+                    if (!isCompleted)
+                      Icon(
+                        Icons.chevron_right,
+                        color: Colors.grey.shade400,
+                        size: 24,
+                      )
+                    else
+                      const Icon(
+                        Icons.check_circle_outline,
+                        color: Colors.green,
+                        size: 24,
+                      ),
                   ],
                 ),
+                // Confirmation Action Buttons if status is assigned (even in regular style)
+                if (order.status == 'assigned') ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppButton(
+                          onPressed: isLoading
+                              ? null
+                              : () => _respondToPickup(context, order, false),
+                          icon: Icons.close,
+                          text: 'Rechazar',
+                          variant: AppButtonVariant.outlined,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: AppButton(
+                          onPressed: isLoading
+                              ? null
+                              : () => _respondToPickup(context, order, true),
+                          icon: Icons.check,
+                          text: 'Aceptar',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       );

@@ -38,16 +38,20 @@ def _obtener_paradas_activas(session, id_repartidor: str) -> list[dict]:
     return [record.data() for record in result]
 
 
-def _obtener_repartidores_activos_con_paradas(session) -> list[dict]:
+def _obtener_repartidores_activos_con_paradas_para_pedido(session, id_pedido: str) -> list[dict]:
     result = session.run("""
         MATCH (u:User {role: 'repartidor'})
-        WHERE u.lat IS NOT NULL
+        WHERE u.lat IS NOT NULL 
+          AND coalesce(u.is_available, true) = true
+          AND NOT (u)-[:REJECTED_BY]->(:Order {id: $oid})
         OPTIONAL MATCH (u)-[:ASSIGNED_TO]->(o:Order)
         WHERE o.status IN ["assigned", "in_progress"]
+        WITH u, collect(CASE WHEN o IS NOT NULL THEN {id: o.id, lat: o.lat, lng: o.lng} END) AS paradas_raw
         RETURN u.id AS id, u.lat AS lat, u.lng AS lng,
-               collect({id: o.id, lat: o.lat, lng: o.lng}) AS paradas_activas
-    """)
+               [p IN paradas_raw WHERE p IS NOT NULL] AS paradas_activas
+    """, {"oid": id_pedido})
     return [dict(r) for r in result]
+
 
 
 def _plan_ruta_repartidor(session, id_repartidor: str) -> dict:
@@ -144,6 +148,7 @@ def listar_pedidos(usuario_actual: dict = Depends(obtener_usuario_actual)):
 async def crear_pedido(cuerpo: CrearPedido, _: dict = Depends(requerir_central)):
     id_pedido = str(uuid.uuid4())
     with obtener_conexion() as session:
+        # 1. Crear el pedido inicial
         session.run(
             """
             CREATE (o:Order {
@@ -160,45 +165,108 @@ async def crear_pedido(cuerpo: CrearPedido, _: dict = Depends(requerir_central))
             """,
             {"id": id_pedido, "type": cuerpo.type, "name": cuerpo.name, "address": cuerpo.address, "lat": cuerpo.lat, "lng": cuerpo.lng},
         )
-        record = session.run(
-            "MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o",
-            {"id": id_pedido},
-        ).single()
-        resp = dict(record["o"])
-        resp["assigned_driver_id"] = None
+        
+        # 2. Buscar repartidores activos y calcular candidatos por cercanía/inserción
+        repartidores = _obtener_repartidores_activos_con_paradas_para_pedido(session, id_pedido)
+        print(f"[CREAR_PEDIDO] Repartidores activos encontrados: {len(repartidores)}")
+        for r in repartidores:
+            print(f"  - {r['id']}: lat={r['lat']}, lng={r['lng']}, paradas={len(r.get('paradas_activas', []))}")
 
         candidatos = []
-        if cuerpo.type == "pickup":
-            repartidores = _obtener_repartidores_activos_con_paradas(session)
+        if repartidores:
             candidatos = detectar_candidatos_backhauling(
                 {"lat": cuerpo.lat, "lng": cuerpo.lng},
                 repartidores,
                 osrm_base_url=OSRM_BASE_URL if OSRM_ACTIVO else None,
                 timeout_seconds=OSRM_TIMEOUT_SEGUNDOS,
             )
+        print(f"[CREAR_PEDIDO] Candidatos backhauling: {len(candidatos)}")
+        for c in candidatos:
+            print(f"  - {c['driver_id']}: extra_minutos={c['extra_minutos']}")
+
+        # 3. Asignación automática directa (con popup de aceptación y lista secuencial)
+        assigned_driver_id = None
+        minutos_extra = 0.0
+        candidate_ids = [c["driver_id"] for c in candidatos]
+        if candidate_ids:
+            assigned_driver_id = candidate_ids[0]
+            # Buscar el desvío correspondiente del primer candidato
+            minutos_extra = next(c["extra_minutos"] for c in candidatos if c["driver_id"] == assigned_driver_id)
+            
+            # Asignar directamente como 'assigned' y persistir la lista secuencial
+            session.run(
+                """
+                MATCH (o:Order {id: $oid}), (u:User {id: $uid})
+                SET o.status = 'assigned',
+                    o.estimated_extra_minutes = $minutos,
+                    o.candidate_driver_ids = $candidate_ids,
+                    o.current_candidate_idx = 0,
+                    o.updated_at = datetime()
+                MERGE (u)-[:ASSIGNED_TO]->(o)
+                """,
+                {
+                    "oid": id_pedido,
+                    "uid": assigned_driver_id,
+                    "minutos": minutos_extra,
+                    "candidate_ids": candidate_ids,
+                },
+            )
+            print(f"[CREAR_PEDIDO] ✅ Pedido {id_pedido} asignado a {assigned_driver_id} (status=assigned, candidatos={candidate_ids})")
+            
+            # Recalcular y persistir la ruta óptima para este repartidor
+            plan = _plan_ruta_repartidor(session, assigned_driver_id)
+            _persistir_metricas_ruta(session, assigned_driver_id, plan)
+        else:
+            session.run(
+                """
+                MATCH (o:Order {id: $oid})
+                SET o.status = 'pending',
+                    o.candidate_driver_ids = [],
+                    o.current_candidate_idx = -1,
+                    o.updated_at = datetime()
+                """,
+                {"oid": id_pedido}
+            )
+            print(f"[CREAR_PEDIDO] ⚠️ No hay candidatos, pedido {id_pedido} queda como pending")
+
+        # 4. Recuperar los datos finales actualizados
+        record = session.run(
+            "MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o",
+            {"id": id_pedido},
+        ).single()
+        resp = dict(record["o"])
+        resp["assigned_driver_id"] = assigned_driver_id
         resp["backhauling_candidates"] = candidatos
 
-    # Push WS fuera del bloque DB para no mantener la sesión abierta
-    if candidatos:
-        for c in candidatos:
-            await gestor.enviar_a_repartidor(c["driver_id"], {
-                "type": "pickup:suggestion",
-                "order_id": id_pedido,
-                "order": resp,
-                "extra_minutes": c["extra_minutos"],
-                "indice_insercion": c["indice_insercion"],
-            })
+    # 5. Notificaciones WS en tiempo real
+    if assigned_driver_id:
+        # Notificar al repartidor de que se le asignó un nuevo pedido
+        await gestor.enviar_a_repartidor(assigned_driver_id, {
+            "type": "pickup:notification",
+            "order": resp,
+            "extra_minutes": minutos_extra,
+        })
+        # Notificar a la central del resultado automático
         await gestor.difundir_a_central({
-            "type": "backhauling:candidates",
+            "type": "pickup:assigned_automatically",
             "order_id": id_pedido,
+            "driver_id": assigned_driver_id,
+            "extra_minutes": minutos_extra,
             "candidates": candidatos,
+        })
+    else:
+        # Si no había repartidores, avisar a la central de que queda pendiente de asignación
+        await gestor.difundir_a_central({
+            "type": "pickup:pending",
+            "order_id": id_pedido,
+            "order": resp,
         })
 
     return resp
 
 
 @enrutador.post("/{id_pedido}/assign")
-def asignar_pedido(
+async def asignar_pedido(
     id_pedido: str,
     cuerpo: AsignarPedido,
     _: dict = Depends(requerir_central),
@@ -230,16 +298,35 @@ def asignar_pedido(
         )
         minutos_extra = resultado["extra_minutos"]
 
+        # Calcular todos los candidatos para persistir la lista secuencial
+        repartidores = _obtener_repartidores_activos_con_paradas_para_pedido(session, id_pedido)
+        candidatos_todos = detectar_candidatos_backhauling(
+            {"id": id_pedido, "lat": pedido["lat"], "lng": pedido["lng"]},
+            repartidores,
+            osrm_base_url=OSRM_BASE_URL if OSRM_ACTIVO else None,
+            timeout_seconds=OSRM_TIMEOUT_SEGUNDOS,
+        )
+        candidate_ids = [cuerpo.driver_id] + [
+            c["driver_id"] for c in candidatos_todos if c["driver_id"] != cuerpo.driver_id
+        ]
+
         # Actualizar el pedido y crear relación de asignación
         session.run(
             """
             MATCH (o:Order {id: $oid}), (u:User {id: $uid})
             SET o.status = 'assigned', 
                 o.estimated_extra_minutes = $minutos,
+                o.candidate_driver_ids = $candidate_ids,
+                o.current_candidate_idx = 0,
                 o.updated_at = datetime()
             MERGE (u)-[:ASSIGNED_TO]->(o)
             """,
-            {"oid": id_pedido, "uid": cuerpo.driver_id, "minutos": minutos_extra},
+            {
+                "oid": id_pedido,
+                "uid": cuerpo.driver_id,
+                "minutos": minutos_extra,
+                "candidate_ids": candidate_ids,
+            },
         )
         
         plan = _plan_ruta_repartidor(session, cuerpo.driver_id)
@@ -248,6 +335,13 @@ def asignar_pedido(
         actualizado_record = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()
         actualizado_dict = actualizado_record["o"]
         actualizado_dict["assigned_driver_id"] = cuerpo.driver_id
+
+        # Enviar notificación WS en tiempo real al repartidor asignado
+        await gestor.enviar_a_repartidor(cuerpo.driver_id, {
+            "type": "pickup:notification",
+            "order": actualizado_dict,
+            "extra_minutes": minutos_extra,
+        })
 
         return {
             "order": actualizado_dict,
@@ -261,7 +355,7 @@ def asignar_pedido(
 
 
 @enrutador.post("/{id_pedido}/respond")
-def responder_pedido(
+async def responder_pedido(
     id_pedido: str,
     cuerpo: ResponderPedido,
     usuario_actual: dict = Depends(obtener_usuario_actual),
@@ -289,29 +383,158 @@ def responder_pedido(
         if result["assigned_driver_id"] != usuario_actual["id"]:
             raise HTTPException(status_code=403, detail="Este pedido no está asignado a ti")
 
-        minutos_extra = float(pedido.get("estimated_extra_minutes") or 0.0) if cuerpo.accepted else 0.0
-        nuevo_status = "in_progress" if cuerpo.accepted else "rejected"
+        nuevo_driver_id = None
+        minutos_extra = 0.0
+        candidatos = []
 
-        session.run(
-            "MATCH (o:Order {id: $oid}) SET o.status = $status, o.updated_at = datetime()",
-            {"oid": id_pedido, "status": nuevo_status}
-        )
+        if cuerpo.accepted:
+            nuevo_status = "in_progress"
+            minutos_extra = float(pedido.get("estimated_extra_minutes") or 0.0)
+            
+            session.run(
+                "MATCH (o:Order {id: $oid}) SET o.status = $status, o.updated_at = datetime()",
+                {"oid": id_pedido, "status": nuevo_status}
+            )
+            
+            plan = _plan_ruta_repartidor(session, usuario_actual["id"])
+            _persistir_metricas_ruta(session, usuario_actual["id"], plan)
+            
+            actualizado_record = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()
+            actualizado = actualizado_record["o"]
+            actualizado["assigned_driver_id"] = usuario_actual["id"]
+        else:
+            # 1. Eliminar relación de asignación ASSIGNED_TO
+            session.run(
+                """
+                MATCH (u:User {id: $uid})-[r:ASSIGNED_TO]->(o:Order {id: $oid})
+                DELETE r
+                """,
+                {"uid": usuario_actual["id"], "oid": id_pedido}
+            )
+            # 2. Registrar el rechazo con REJECTED_BY
+            session.run(
+                """
+                MATCH (u:User {id: $uid}), (o:Order {id: $oid})
+                MERGE (u)-[:REJECTED_BY]->(o)
+                """,
+                {"uid": usuario_actual["id"], "oid": id_pedido}
+            )
+            # 3. Recalcular la ruta del repartidor que rechaza para quitar la parada
+            plan_antiguo = _plan_ruta_repartidor(session, usuario_actual["id"])
+            _persistir_metricas_ruta(session, usuario_actual["id"], plan_antiguo)
 
-        plan = _plan_ruta_repartidor(session, usuario_actual["id"])
-        _persistir_metricas_ruta(session, usuario_actual["id"], plan)
+            # 4. Buscar siguientes repartidores candidatos activos (excluyendo rechazos mediante REJECTED_BY en la DB)
+            print(f"[RECHAZAR_PEDIDO] 🚫 Conductor '{usuario_actual['id']}' rechaza pedido '{id_pedido}'")
+            
+            # Diagnóstico: ver TODOS los repartidores y por qué se excluyen
+            diag = session.run("""
+                MATCH (u:User {role: 'repartidor'})
+                OPTIONAL MATCH (u)-[rej:REJECTED_BY]->(:Order {id: $oid})
+                RETURN u.id AS id, u.lat AS lat, u.is_available AS is_available,
+                       rej IS NOT NULL AS has_rejected
+            """, {"oid": id_pedido})
+            for d in diag:
+                print(f"[RECHAZAR_PEDIDO] 📊 Driver '{d['id']}': lat={d['lat']}, is_available={d['is_available']}, ya_rechazo={d['has_rejected']}")
+            
+            repartidores = _obtener_repartidores_activos_con_paradas_para_pedido(session, id_pedido)
+            print(f"[RECHAZAR_PEDIDO] 🔍 Repartidores activos que no han rechazado: {[r['id'] for r in repartidores]}")
+            
+            candidatos = []
+            if repartidores:
+                candidatos = detectar_candidatos_backhauling(
+                    {"lat": pedido["lat"], "lng": pedido["lng"]},
+                    repartidores,
+                    osrm_base_url=OSRM_BASE_URL if OSRM_ACTIVO else None,
+                    timeout_seconds=OSRM_TIMEOUT_SEGUNDOS,
+                )
+            
+            print(f"[RECHAZAR_PEDIDO] 📋 Candidatos recalculados ordenados: {[c['driver_id'] for c in candidatos]}")
+            
+            nuevo_driver_id = None
+            minutos_extra = 0.0
+            
+            # 5. Asignar automáticamente al siguiente disponible
+            if candidatos:
+                optimo = candidatos[0]
+                nuevo_driver_id = optimo["driver_id"]
+                minutos_extra = optimo["extra_minutos"]
+                
+                print(f"[RECHAZAR_PEDIDO]  Asignando pedido a nuevo conductor '{nuevo_driver_id}' (status=assigned)")
+                session.run(
+                    """
+                    MATCH (o:Order {id: $oid}), (u:User {id: $uid})
+                    SET o.status = 'assigned',
+                        o.estimated_extra_minutes = $minutos,
+                        o.updated_at = datetime()
+                    MERGE (u)-[:ASSIGNED_TO]->(o)
+                    """,
+                    {
+                        "oid": id_pedido,
+                        "uid": nuevo_driver_id,
+                        "minutos": minutos_extra,
+                    },
+                )
+                
+                plan = _plan_ruta_repartidor(session, nuevo_driver_id)
+                _persistir_metricas_ruta(session, nuevo_driver_id, plan)
+                
+                nuevo_status = "assigned"
+            else:
+                print(f"[RECHAZAR_PEDIDO] ⚠️ Ningún candidato activo/disponible para tomar el pedido. Queda como PENDING.")
+                session.run(
+                    """
+                    MATCH (o:Order {id: $oid})
+                    SET o.status = 'pending',
+                        o.estimated_extra_minutes = null,
+                        o.updated_at = datetime()
+                    """,
+                    {"oid": id_pedido}
+                )
+                nuevo_status = "pending"
+                plan = {
+                    "total_minutes": 0.0,
+                    "total_distance_km": 0.0,
+                    "order_ids": [],
+                    "route_geometry": [],
+                    "leg_minutes": [],
+                }
 
-        actualizado = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()["o"]
-        actualizado["assigned_driver_id"] = usuario_actual["id"]
-        
-        return {
-            "order": actualizado,
-            "extra_minutes": round(minutos_extra, 1),
-            "total_minutes": plan["total_minutes"],
-            "total_distance_km": plan["total_distance_km"],
-            "route_order_ids": plan["order_ids"],
-            "route_geometry": plan["route_geometry"],
-            "leg_minutes": plan["leg_minutes"],
-        }
+            actualizado_record = session.run("MATCH (o:Order {id: $id}) RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o", {"id": id_pedido}).single()
+            actualizado = actualizado_record["o"]
+            actualizado["assigned_driver_id"] = nuevo_driver_id
+            actualizado["backhauling_candidates"] = candidatos
+
+    # 6. Notificaciones WS en tiempo real tras la transacción
+    if not cuerpo.accepted:
+        if nuevo_status == "assigned" and nuevo_driver_id:
+            await gestor.enviar_a_repartidor(nuevo_driver_id, {
+                "type": "pickup:notification",
+                "order": actualizado,
+                "extra_minutes": minutos_extra,
+            })
+            await gestor.difundir_a_central({
+                "type": "pickup:assigned_automatically",
+                "order_id": id_pedido,
+                "driver_id": nuevo_driver_id,
+                "extra_minutes": minutos_extra,
+                "candidates": candidatos,
+            })
+        elif nuevo_status == "pending":
+            await gestor.difundir_a_central({
+                "type": "pickup:pending",
+                "order_id": id_pedido,
+                "order": actualizado,
+            })
+
+    return {
+        "order": actualizado,
+        "extra_minutes": round(minutos_extra, 1),
+        "total_minutes": plan["total_minutes"],
+        "total_distance_km": plan["total_distance_km"],
+        "route_order_ids": plan["order_ids"],
+        "route_geometry": plan["route_geometry"],
+        "leg_minutes": plan["leg_minutes"],
+    }
 
 
 @enrutador.patch("/{id_pedido}/status")

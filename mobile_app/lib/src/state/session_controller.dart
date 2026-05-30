@@ -75,4 +75,33 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
     await _authService.logout();
   }
+
+  Future<bool> updateProfile({
+    String? name,
+    String? username,
+    String? password,
+  }) async {
+    final t = _token;
+    if (t == null) return false;
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final updatedUser = await _authService.updateProfile(
+        token: t,
+        name: name,
+        username: username,
+        password: password,
+      );
+      _user = updatedUser;
+      return true;
+    } catch (error) {
+      _errorMessage = error.toString();
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 }

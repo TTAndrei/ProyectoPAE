@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../config/app_config.dart';
+import '../../models/app_user.dart';
+import '../../providers/central_provider.dart';
 import '../../providers/driver_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../providers/route_provider.dart';
@@ -60,13 +62,11 @@ class HomePage extends StatelessWidget {
                     apiBaseUrl: AppConfig.apiBaseUrl,
                   ),
                 ),
-                ChangeNotifierProvider<DriverProvider>(
-                  create: (_) => DriverProvider(
+                ChangeNotifierProvider<CentralProvider>(
+                  create: (_) => CentralProvider(
                     driverService: driverService,
-                    routeService: routeService,
                     token: token,
                     apiBaseUrl: AppConfig.apiBaseUrl,
-                    user: user,
                   ),
                 ),
                 ChangeNotifierProvider<RouteProvider>(
@@ -75,31 +75,56 @@ class HomePage extends StatelessWidget {
               ],
               child: const CentralPage(),
             )
-          : MultiProvider(
-              providers: [
-                ChangeNotifierProvider<OrderProvider>(
-                  create: (_) => OrderProvider(
-                    orderService: orderService,
-                    routeService: routeService,
-                    token: token,
-                    apiBaseUrl: AppConfig.apiBaseUrl,
-                  ),
-                ),
-                ChangeNotifierProvider<DriverProvider>(
-                  create: (_) => DriverProvider(
-                    driverService: driverService,
-                    routeService: routeService,
-                    token: token,
-                    apiBaseUrl: AppConfig.apiBaseUrl,
-                    user: user,
-                  ),
-                ),
-                ChangeNotifierProvider<RouteProvider>(
-                  create: (_) => RouteProvider(routeService: routeService),
-                ),
-              ],
-              child: const DriverNavBar(),
+          : _buildDriverProviders(
+              orderService: orderService,
+              driverService: driverService,
+              routeService: routeService,
+              token: token,
+              user: user,
             ),
+    );
+  }
+
+  /// Build the driver section with DriverProvider first so that its
+  /// wsRefreshStream can be passed to OrderProvider. This avoids
+  /// OrderProvider opening a duplicate WebSocket connection.
+  Widget _buildDriverProviders({
+    required OrderService orderService,
+    required DriverService driverService,
+    required RouteService routeService,
+    required String token,
+    required AppUser user,
+  }) {
+    return ChangeNotifierProvider<DriverProvider>(
+      create: (_) => DriverProvider(
+        driverService: driverService,
+        routeService: routeService,
+        token: token,
+        apiBaseUrl: AppConfig.apiBaseUrl,
+        user: user,
+      ),
+      child: Builder(
+        builder: (driverCtx) {
+          final driverProv = driverCtx.read<DriverProvider>();
+          return MultiProvider(
+            providers: [
+              ChangeNotifierProvider<OrderProvider>(
+                create: (_) => OrderProvider(
+                  orderService: orderService,
+                  routeService: routeService,
+                  token: token,
+                  apiBaseUrl: AppConfig.apiBaseUrl,
+                  refreshStream: driverProv.wsRefreshStream,
+                ),
+              ),
+              ChangeNotifierProvider<RouteProvider>(
+                create: (_) => RouteProvider(routeService: routeService),
+              ),
+            ],
+            child: const DriverNavBar(),
+          );
+        },
+      ),
     );
   }
 }

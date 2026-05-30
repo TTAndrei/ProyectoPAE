@@ -29,6 +29,14 @@ class DriverProvider extends ChangeNotifier {
       const Duration(seconds: 8),
       (_) => _loadData(showLoader: false),
     );
+    _secondsTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (_activeJornada != null) {
+          notifyListeners();
+        }
+      },
+    );
   }
 
   final DriverService _driverService;
@@ -39,51 +47,99 @@ class DriverProvider extends ChangeNotifier {
   final WsService _wsService = WsService();
 
   Timer? _refreshTimer;
+  Timer? _secondsTimer;
   bool _isLoading = false;
   String? _error;
 
-  List<DriverModel> _drivers = const [];
   DriverLocation? _driverLocation;
   DriverRoutePlan? _routePlan;
   List<OrderModel> _routeOrders = const [];
   final List<String> _events = <String>[];
+  bool _isAvailable = true;
+  Map<String, dynamic>? _activeJornada;
+
+  final _incomingOrderStreamController = StreamController<AssignOrderResult>.broadcast();
+  final _wsRefreshController = StreamController<void>.broadcast();
 
   // ── Getters ──────────────────────────────────────────────────────
+  Stream<AssignOrderResult> get incomingOrderNotifications => _incomingOrderStreamController.stream;
+  /// Stream that fires when WS events indicate orders should be refreshed.
+  Stream<void> get wsRefreshStream => _wsRefreshController.stream;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  List<DriverModel> get drivers => _drivers;
   DriverLocation? get driverLocation => _driverLocation;
   DriverRoutePlan? get routePlan => _routePlan;
   List<OrderModel> get routeOrders => _routeOrders;
   List<String> get events => _events;
   AppUser get user => _user;
+  bool get isAvailable => _isAvailable;
+  Map<String, dynamic>? get activeJornada => _activeJornada;
+
+  Duration get shiftDuration {
+    final active = _activeJornada;
+    if (active == null) return Duration.zero;
+    final startTimeStr = active['start_time']?.toString();
+    if (startTimeStr == null) return Duration.zero;
+    try {
+      final startTime = DateTime.parse(startTimeStr);
+      return DateTime.now().difference(startTime);
+    } catch (_) {
+      return Duration.zero;
+    }
+  }
 
   // ── Lifecycle ────────────────────────────────────────────────────
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _secondsTimer?.cancel();
     _wsService.disconnect();
+    _incomingOrderStreamController.close();
+    _wsRefreshController.close();
     super.dispose();
   }
 
   // ── WebSocket ────────────────────────────────────────────────────
   void _connectWs() {
+    print('[DriverProvider] Connecting WS for user ${_user.id}...');
     _wsService.connect(
       apiBaseUrl: _apiBaseUrl,
       token: _token,
       onMessage: (payload) {
         final type = payload['type']?.toString() ?? 'event';
+        print('[DriverProvider] WS message received: type=$type');
         _pushEvent('WS: $type');
 
-        if (type == 'pickup:notification' ||
+        if (type == 'pickup:auto_assigned' ||
+            type == 'pickup:notification' ||
             type == 'driver:location:update' ||
             type == 'pickup:response') {
           _loadData(showLoader: false);
+          _wsRefreshController.add(null); // notify OrderProvider
+        }
+
+        // Notification of newly assigned order needing confirmation: notify via stream
+        if (type == 'pickup:notification' || type == 'pickup:auto_assigned') {
+          print('[DriverProvider] ✅ Nuevo pedido asignado recibido (requiere confirmacion)');
+          try {
+            final assignment = AssignOrderResult.fromJson(payload);
+            _incomingOrderStreamController.add(assignment);
+          } catch (e) {
+            print('[DriverProvider] Error parsing notification: $e');
+            _pushEvent('Error parseo asignacion: $e');
+          }
         }
       },
-      onError: (error) => _pushEvent('WS error: $error'),
-      onDone: () => _pushEvent('WS disconnected'),
+      onError: (error) {
+        print('[DriverProvider] WS error: $error');
+        _pushEvent('WS error: $error');
+      },
+      onDone: () {
+        print('[DriverProvider] WS disconnected');
+        _pushEvent('WS disconnected');
+      },
     );
+    print('[DriverProvider] WS connect() called');
   }
 
   void sendWsMessage(Map<String, dynamic> payload) {
@@ -107,26 +163,96 @@ class DriverProvider extends ChangeNotifier {
 
     try {
       final results = await Future.wait<dynamic>([
-        _driverService.fetchDrivers(token: _token),
         _routeService.getRoutePlan(token: _token, driverId: _user.id),
         _driverService.getDriverLocation(token: _token, driverId: _user.id),
+        _driverService.getActiveJornada(token: _token),
       ]);
 
-      final incomingPlan = results[1] as DriverRoutePlan;
+      final incomingPlan = results[0] as DriverRoutePlan;
       final newRoutePlan = _routeService.preferStreetGeometry(
         incoming: incomingPlan,
         current: _routePlan,
       );
 
-      _drivers = results[0] as List<DriverModel>;
       _routePlan = newRoutePlan;
       _routeOrders = newRoutePlan.orders;
-      _driverLocation = results[2] as DriverLocation?;
+      _driverLocation = results[1] as DriverLocation?;
+      _activeJornada = results[2] as Map<String, dynamic>?;
+
+      if (_driverLocation != null) {
+        _isAvailable = _driverLocation!.isAvailable;
+      }
+
+      // Check if there are any assigned orders needing acceptance and push them
+      final assignedOrders = newRoutePlan.orders.where((o) => o.status == 'assigned').toList();
+      if (assignedOrders.isNotEmpty) {
+        print('[DriverProvider] Found ${assignedOrders.length} assigned orders needing confirmation. Pushing notifications...');
+        for (final order in assignedOrders) {
+          final assignment = AssignOrderResult(
+            order: order,
+            extraMinutes: order.estimatedExtraMinutes ?? 0.0,
+          );
+          _incomingOrderStreamController.add(assignment);
+        }
+      }
+
       _error = null;
     } catch (e) {
       _error = e.toString();
     } finally {
       if (showLoader) _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> toggleAvailability(bool available) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _driverService.updateDriverAvailability(
+        token: _token,
+        driverId: _user.id,
+        isAvailable: available,
+      );
+      _isAvailable = available;
+      _pushEvent('Disponibilidad: ${available ? "Activo" : "Pausado"}');
+      await _loadData(showLoader: false);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> startShift() async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final res = await _driverService.startJornada(token: _token);
+      _activeJornada = res;
+      _pushEvent('Jornada iniciada');
+      await _loadData(showLoader: false);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> endShift() async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _driverService.endJornada(token: _token);
+      _activeJornada = null;
+      _pushEvent('Jornada finalizada');
+      await _loadData(showLoader: false);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
       notifyListeners();
     }
   }
@@ -191,6 +317,7 @@ class DriverProvider extends ChangeNotifier {
       lng: lng,
       heading: 0,
       updatedAt: DateTime.now().toIso8601String(),
+      isAvailable: _isAvailable,
     );
 
     _pushEvent(

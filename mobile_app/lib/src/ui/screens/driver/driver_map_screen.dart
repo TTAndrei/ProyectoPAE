@@ -12,6 +12,7 @@ import '../../widgets/app_button.dart';
 import '../../widgets/app_empty_card.dart';
 import '../../widgets/app_map_pin_icon.dart';
 import '../../widgets/app_metric_pill.dart';
+import '../../widgets/order_details_dialog.dart';
 
 class DriverMapScreen extends StatefulWidget {
   const DriverMapScreen({
@@ -419,49 +420,83 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+        GestureDetector(
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (dialogCtx) => OrderDetailsDialog(
+                order: order,
+                onNavigate: () => _mapController.move(LatLng(order.lat, order.lng), 15.5),
+                onComplete: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  try {
+                    await context.read<OrderProvider>().updateOrderStatus(
+                      orderId: order.id,
+                      status: 'completed',
+                      actionLabel: order.type == 'pickup' ? 'recogido' : 'entregado',
+                    );
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          order.type == 'pickup'
+                              ? '¡Pedido marcado como recogido!'
+                              : '¡Pedido marcado como entregado!',
+                        ),
+                      ),
+                    );
+                  } catch (e) {
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('Error al actualizar el pedido: $e')),
+                    );
+                  }
+                },
               ),
-              child: const Icon(
-                Icons.inventory_2_outlined,
-                color: AppTheme.primary,
-                size: 20,
+            );
+          },
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  color: AppTheme.primary,
+                  size: 20,
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isPickup ? '¡Nueva Recogida Asignada!' : '¡Nueva Entrega Asignada!',
-                    style: const TextStyle(
-                      fontFamily: 'Manrope',
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2F2E2E),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isPickup ? '¡Nueva Recogida Asignada!' : '¡Nueva Entrega Asignada!',
+                      style: const TextStyle(
+                        fontFamily: 'Manrope',
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2F2E2E),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Se ha añadido una ${isPickup ? "recogida" : "entrega"} de paquete a tu ruta. Acepta para ver los detalles del nuevo punto de parada.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
-                      height: 1.3,
+                    const SizedBox(height: 2),
+                    Text(
+                      'Se ha añadido una ${isPickup ? "recogida" : "entrega"} de paquete a tu ruta. Acepta para ver los detalles del nuevo punto de parada.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                        height: 1.3,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 14),
         
@@ -678,46 +713,85 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
         ),
         const SizedBox(height: 12),
 
-        // Delivery focus text
-        Text(
-          isPickup ? 'RECOGIDA ACTUAL' : 'ENTREGA ACTUAL',
-          style: const TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.primary,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          isPickup ? 'Recoger de ${order.name ?? "Proveedor"}' : 'Entregar a ${order.name ?? "Cliente"}',
-          style: const TextStyle(
-            fontFamily: 'Manrope',
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF2F2E2E),
-            letterSpacing: -0.5,
-          ),
-        ),
-        const SizedBox(height: 4),
-        
-        // Location row
-        Row(
-          children: [
-            Icon(Icons.place_outlined, size: 14, color: Colors.grey.shade500),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                order.address,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade600,
+        GestureDetector(
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (dialogCtx) => OrderDetailsDialog(
+                order: order,
+                onNavigate: () => _mapController.move(LatLng(order.lat, order.lng), 15.5),
+                onComplete: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  try {
+                    await context.read<OrderProvider>().updateOrderStatus(
+                      orderId: order.id,
+                      status: 'completed',
+                      actionLabel: order.type == 'pickup' ? 'recogido' : 'entregado',
+                    );
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          order.type == 'pickup'
+                              ? '¡Pedido marcado como recogido!'
+                              : '¡Pedido marcado como entregado!',
+                        ),
+                      ),
+                    );
+                  } catch (e) {
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('Error al actualizar el pedido: $e')),
+                    );
+                  }
+                },
+              ),
+            );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Delivery focus text
+              Text(
+                isPickup ? 'RECOGIDA ACTUAL' : 'ENTREGA ACTUAL',
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primary,
+                  letterSpacing: 0.5,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                isPickup ? 'Recoger de ${order.name ?? "Proveedor"}' : 'Entregar a ${order.name ?? "Cliente"}',
+                style: const TextStyle(
+                  fontFamily: 'Manrope',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF2F2E2E),
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              
+              // Location row
+              Row(
+                children: [
+                  Icon(Icons.place_outlined, size: 14, color: Colors.grey.shade500),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      order.address,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
         const Divider(height: 20, color: Color(0xFFEAE7E7)),
 

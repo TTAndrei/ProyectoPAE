@@ -343,6 +343,88 @@ class ApiClient {
     );
     _ensureSuccess(response);
   }
+
+  Future<AppUser> updateProfile({
+    required String token,
+    String? name,
+    String? username,
+    String? password,
+  }) async {
+    final response = await _httpClient.put(
+      _buildUri('/auth/me'),
+      headers: _headers(token: token),
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (username != null) 'username': username,
+        if (password != null && password.trim().isNotEmpty) 'password': password,
+      }),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid update profile response format');
+    }
+    return AppUser.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<void> updateDriverAvailability({
+    required String token,
+    required String driverId,
+    required bool isAvailable,
+  }) async {
+    final response = await _httpClient.put(
+      _buildUri('/drivers/${Uri.encodeComponent(driverId)}/availability'),
+      headers: _headers(token: token),
+      body: jsonEncode({'is_available': isAvailable}),
+    );
+    _ensureSuccess(response);
+  }
+
+  Future<Map<String, dynamic>?> getActiveJornada({
+    required String token,
+  }) async {
+    final response = await _httpClient.get(
+      _buildUri('/drivers/me/jornada/active'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded == null) return null;
+    if (decoded is! Map) {
+      throw const ApiException('Invalid active shift response format');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  Future<Map<String, dynamic>> startJornada({
+    required String token,
+  }) async {
+    final response = await _httpClient.post(
+      _buildUri('/drivers/me/jornada/start'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid start shift response format');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  Future<Map<String, dynamic>> endJornada({
+    required String token,
+  }) async {
+    final response = await _httpClient.post(
+      _buildUri('/drivers/me/jornada/end'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid end shift response format');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
 }
 
 class GeocodeCandidate {

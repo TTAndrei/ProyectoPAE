@@ -47,4 +47,25 @@ class AuthService {
   Future<void> logout() async {
     await _authStore.clearSession();
   }
+
+  /// Updates user profile details and updates the local storage/session.
+  Future<AppUser> updateProfile({
+    required String token,
+    String? name,
+    String? username,
+    String? password,
+  }) async {
+    final updatedUser = await _apiClient.updateProfile(
+      token: token,
+      name: name,
+      username: username,
+      password: password,
+    );
+    final stored = await _authStore.readSession();
+    if (stored != null) {
+      final newSession = AuthSession(token: stored.token, user: updatedUser);
+      await _authStore.saveSession(newSession);
+    }
+    return updatedUser;
+  }
 }

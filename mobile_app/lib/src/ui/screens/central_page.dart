@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/driver_model.dart';
 import '../../models/order_model.dart';
-import '../../providers/driver_provider.dart';
+import '../../providers/central_provider.dart';
 import '../../providers/order_provider.dart';
 import '../../providers/route_provider.dart';
 import '../../services/api_client.dart';
@@ -119,9 +119,9 @@ class _CentralPageState extends State<CentralPage> {
   // ── Actions ──────────────────────────────────────────────────────
 
   Future<void> _assignOrder(OrderModel order) async {
-    final driverProv = context.read<DriverProvider>();
+    final centralProv = context.read<CentralProvider>();
     final orderProv = context.read<OrderProvider>();
-    final drivers = driverProv.drivers;
+    final drivers = centralProv.drivers;
 
     if (drivers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -490,10 +490,10 @@ class _CentralPageState extends State<CentralPage> {
   @override
   Widget build(BuildContext context) {
     final orderProv = context.watch<OrderProvider>();
-    final driverProv = context.watch<DriverProvider>();
+    final centralProv = context.watch<CentralProvider>();
     final routeProv = context.watch<RouteProvider>();
 
-    final drivers = driverProv.drivers;
+    final drivers = centralProv.drivers;
     final orders = orderProv.orders;
     final pendingOrders = orderProv.pendingOrders;
     final activeOrders = orderProv.activeOrders;

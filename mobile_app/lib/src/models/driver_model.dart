@@ -20,6 +20,7 @@ class DriverModel {
     this.lng,
     this.heading,
     this.locationUpdatedAt,
+    this.isAvailable = true,
   });
 
   final String id;
@@ -29,6 +30,7 @@ class DriverModel {
   final double? lng;
   final double? heading;
   final String? locationUpdatedAt;
+  final bool isAvailable;
 
   String get shortLocation {
     if (lat == null || lng == null) {
@@ -46,6 +48,7 @@ class DriverModel {
       lng: _asNullableDouble(json['lng']),
       heading: _asNullableDouble(json['heading']),
       locationUpdatedAt: json['location_updated_at']?.toString(),
+      isAvailable: json['is_available'] == null ? true : (json['is_available'] as bool),
     );
   }
 }
@@ -57,6 +60,7 @@ class DriverLocation {
     required this.lng,
     required this.heading,
     this.updatedAt,
+    this.isAvailable = true,
   });
 
   final String driverId;
@@ -64,6 +68,7 @@ class DriverLocation {
   final double lng;
   final double heading;
   final String? updatedAt;
+  final bool isAvailable;
 
   factory DriverLocation.fromJson(Map<String, dynamic> json) {
     return DriverLocation(
@@ -72,6 +77,7 @@ class DriverLocation {
       lng: _asNullableDouble(json['lng']) ?? 0,
       heading: _asNullableDouble(json['heading']) ?? 0,
       updatedAt: json['updated_at']?.toString(),
+      isAvailable: json['is_available'] == null ? true : (json['is_available'] as bool),
     );
   }
 }

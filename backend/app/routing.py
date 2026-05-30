@@ -347,6 +347,7 @@ def _clarke_wright_orden(origen: dict, paradas: list[dict]) -> list[dict]:
     return [paradas[idx] for idx in merged]
 
 
+
 def optimizar_ruta(paradas: list[dict], posicion_repartidor: dict) -> dict:
     """Ordena paradas para minimizar tiempo total. Clarke-Wright para 5+, NN para menos."""
     if not paradas:
@@ -529,16 +530,27 @@ def detectar_candidatos_backhauling(
     """Drivers para quienes añadir nueva_parada cuesta <= umbral_minutos de desvío."""
     candidatos = []
     for rep in repartidores:
-        if not rep.get("lat") or not rep.get("paradas_activas"):
+        if not rep.get("lat") or rep.get("paradas_activas") is None:
             continue
+        # Filter out any null entries from OPTIONAL MATCH collect()
+        paradas = [p for p in rep["paradas_activas"] if p and p.get("lat") is not None]
         resultado = calcular_tiempo_extra(
-            rep["paradas_activas"],
+            paradas,
             {"lat": rep["lat"], "lng": rep["lng"]},
             nueva_parada,
             osrm_base_url=osrm_base_url,
             timeout_seconds=timeout_seconds,
         )
-        if resultado["extra_minutos"] <= umbral_minutos:
+        
+        # Idle drivers (no active stops) can take the order without detour limits.
+        # Active drivers must respect the threshold so they do not delay current clients.
+        es_candidato = False
+        if not rep["paradas_activas"]:
+            es_candidato = True
+        elif resultado["extra_minutos"] <= umbral_minutos:
+            es_candidato = True
+
+        if es_candidato:
             candidatos.append({
                 "driver_id": rep["id"],
                 "extra_minutos": resultado["extra_minutos"],

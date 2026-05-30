@@ -3,9 +3,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPExcept
 
 from app.auth import decodificar_token
 from app.database import obtener_conexion
-from app.routing import calcular_tiempo_extra
+from app.routing import calcular_tiempo_extra, detectar_candidatos_backhauling
 from app.ws_manager import gestor
-from app.routers.orders import _plan_ruta_repartidor, _persistir_metricas_ruta
+from app.routers.orders import _plan_ruta_repartidor, _persistir_metricas_ruta, _obtener_repartidores_activos_con_paradas_para_pedido
 
 enrutador = APIRouter(tags=["websocket"])
 
@@ -105,15 +105,32 @@ async def punto_websocket(websocket: WebSocket, token: str = Query(...)):
                         )
                         minutos_extra = resultado["extra_minutos"]
 
+                    # Calcular todos los candidatos para persistir la lista secuencial
+                    repartidores = _obtener_repartidores_activos_con_paradas_para_pedido(session, id_pedido)
+                    candidatos_todos = detectar_candidatos_backhauling(
+                        {"lat": fila_pedido["lat"], "lng": fila_pedido["lng"]},
+                        repartidores,
+                    )
+                    candidate_ids = [id_repartidor] + [
+                        c["driver_id"] for c in candidatos_todos if c["driver_id"] != id_repartidor
+                    ]
+
                     session.run(
                         """
                         MATCH (o:Order {id: $oid}), (u:User {id: $uid})
                         SET o.status = 'assigned',
                             o.estimated_extra_minutes = $minutos,
+                            o.candidate_driver_ids = $candidate_ids,
+                            o.current_candidate_idx = 0,
                             o.updated_at = datetime()
                         MERGE (u)-[:ASSIGNED_TO]->(o)
                         """,
-                        {"oid": id_pedido, "uid": id_repartidor, "minutos": minutos_extra},
+                        {
+                            "oid": id_pedido,
+                            "uid": id_repartidor,
+                            "minutos": minutos_extra,
+                            "candidate_ids": candidate_ids,
+                        },
                     )
 
                     fila_pedido["assigned_driver_id"] = id_repartidor

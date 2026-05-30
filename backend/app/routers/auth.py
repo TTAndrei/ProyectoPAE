@@ -9,7 +9,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, status, Depends
 
 from app.database import obtener_conexion
-from app.schemas import SolicitudLogin, RespuestaToken, UsuarioRespuesta, CrearUsuario
+from app.schemas import SolicitudLogin, RespuestaToken, UsuarioRespuesta, CrearUsuario, ActualizarPerfil
 from app.auth import contexto_contrasena, crear_token_acceso, obtener_usuario_actual
 
 # Enrutador de autenticación con prefijo /auth
@@ -119,3 +119,59 @@ def obtener_yo(usuario_actual: dict = Depends(obtener_usuario_actual)):
         role=usuario_actual["role"],
         name=usuario_actual["name"],
     )
+
+
+@enrutador.put("/me", response_model=UsuarioRespuesta)
+def actualizar_yo(
+    cuerpo: ActualizarPerfil,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Actualiza la información del usuario autenticado (nombre, nombre de usuario, contraseña)."""
+    with obtener_conexion() as session:
+        if cuerpo.username and cuerpo.username != usuario_actual["username"]:
+            # Verificar si el nuevo nombre de usuario ya está registrado
+            existe = session.run(
+                "MATCH (u:User {username: $username}) RETURN u",
+                {"username": cuerpo.username}
+            ).single()
+            if existe:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El nombre de usuario ya está registrado",
+                )
+
+        params = {"id": usuario_actual["id"]}
+        updates = []
+        if cuerpo.name is not None:
+            updates.append("u.name = $name")
+            params["name"] = cuerpo.name
+        if cuerpo.username is not None:
+            updates.append("u.username = $username")
+            params["username"] = cuerpo.username
+        if cuerpo.password is not None and cuerpo.password.strip() != "":
+            updates.append("u.password_hash = $password_hash")
+            params["password_hash"] = contexto_contrasena.hash(cuerpo.password)
+
+        if updates:
+            set_clause = ", ".join(updates)
+            result = session.run(
+                f"MATCH (u:User {{id: $id}}) SET {set_clause} RETURN u",
+                params
+            )
+            record = result.single()
+            if not record:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            user = record["u"]
+            return UsuarioRespuesta(
+                id=user["id"],
+                username=user["username"],
+                role=user["role"],
+                name=user["name"],
+            )
+
+        return UsuarioRespuesta(
+            id=usuario_actual["id"],
+            username=usuario_actual["username"],
+            role=usuario_actual["role"],
+            name=usuario_actual["name"],
+        )

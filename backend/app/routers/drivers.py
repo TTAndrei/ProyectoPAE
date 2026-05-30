@@ -1,8 +1,9 @@
 import uuid
+from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 
 from app.database import obtener_conexion
-from app.schemas import RepartidorRespuesta, ActualizarUbicacion, JornadaRespuesta
+from app.schemas import RepartidorRespuesta, ActualizarUbicacion, JornadaRespuesta, ActualizarDisponibilidad
 from app.auth import obtener_usuario_actual, requerir_central, requerir_repartidor
 
 enrutador = APIRouter(prefix="/drivers", tags=["repartidores"])
@@ -15,7 +16,8 @@ def listar_repartidores(_: dict = Depends(requerir_central)):
             MATCH (u:User {role: 'repartidor'})
             RETURN u.id AS id, u.username AS username, u.name AS name,
                    u.lat AS lat, u.lng AS lng, u.heading AS heading,
-                   toString(u.location_updated_at) AS location_updated_at
+                   toString(u.location_updated_at) AS location_updated_at,
+                   coalesce(u.is_available, true) AS is_available
         """)
         return [record.data() for record in result]
 
@@ -29,7 +31,8 @@ def obtener_ubicacion_repartidor(
         result = session.run("""
             MATCH (u:User {id: $id})
             RETURN u.lat AS lat, u.lng AS lng, u.heading AS heading, u.id AS driver_id,
-                   toString(u.location_updated_at) AS updated_at
+                   toString(u.location_updated_at) AS updated_at,
+                   coalesce(u.is_available, true) AS is_available
         """, {"id": id_repartidor})
         record = result.single()
         if not record or record["lat"] is None:
@@ -76,6 +79,7 @@ def iniciar_jornada(usuario_actual: dict = Depends(requerir_repartidor)):
         result = session.run(
             """
             MATCH (u:User {id: $uid})
+            SET u.is_available = true
             CREATE (u)-[:HAS_JORNADA]->(j:Jornada {
                 id: $id, status: 'active', start_time: datetime()
             })
@@ -83,6 +87,7 @@ def iniciar_jornada(usuario_actual: dict = Depends(requerir_repartidor)):
             """,
             {"uid": usuario_actual["id"], "id": id_jornada},
         ).single()
+        print(f"[JORNADA] ✅ Repartidor '{usuario_actual['id']}' inicia jornada -> is_available=true")
         r = dict(result["j"])
         r["driver_id"] = usuario_actual["id"]
         return r
@@ -94,13 +99,56 @@ def cerrar_jornada(usuario_actual: dict = Depends(requerir_repartidor)):
         result = session.run(
             """
             MATCH (u:User {id: $uid})-[:HAS_JORNADA]->(j:Jornada {status: 'active'})
-            SET j.status = 'closed', j.end_time = datetime()
+            SET j.status = 'closed', j.end_time = datetime(), u.is_available = false
             RETURN j {.*, start_time: toString(j.start_time), end_time: toString(j.end_time)} AS j
             """,
             {"uid": usuario_actual["id"]},
         ).single()
         if not result:
             raise HTTPException(status_code=404, detail="No hay jornada activa")
+        print(f"[JORNADA] 🔴 Repartidor '{usuario_actual['id']}' cierra jornada -> is_available=false")
         r = dict(result["j"])
         r["driver_id"] = usuario_actual["id"]
         return r
+
+
+@enrutador.get("/me/jornada/active", response_model=Optional[JornadaRespuesta])
+def obtener_jornada_activa(usuario_actual: dict = Depends(requerir_repartidor)):
+    """Obtiene la jornada activa del repartidor actual, si existe."""
+    with obtener_conexion() as session:
+        result = session.run(
+            """
+            MATCH (u:User {id: $uid})-[:HAS_JORNADA]->(j:Jornada {status: 'active'})
+            RETURN j {.*, start_time: toString(j.start_time)} AS j
+            """,
+            {"uid": usuario_actual["id"]},
+        ).single()
+        if not result:
+            return None
+        r = dict(result["j"])
+        r["driver_id"] = usuario_actual["id"]
+        return r
+
+
+@enrutador.put("/{id_repartidor}/availability")
+def actualizar_disponibilidad(
+    id_repartidor: str,
+    cuerpo: ActualizarDisponibilidad,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Actualiza la disponibilidad de un repartidor (solo él mismo puede hacerlo)."""
+    if usuario_actual.get("role") != "repartidor" or usuario_actual.get("id") != id_repartidor:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo puedes actualizar tu propia disponibilidad",
+        )
+
+    with obtener_conexion() as session:
+        session.run(
+            """
+            MATCH (u:User {id: $id})
+            SET u.is_available = $is_available
+            """,
+            {"id": id_repartidor, "is_available": cuerpo.is_available},
+        )
+    return {"success": True}

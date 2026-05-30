@@ -86,7 +86,7 @@ async def test_crear_pedido_central(cliente, token_central):
     assert respuesta.status_code == 201
     datos = respuesta.json()
     assert datos["type"] == "pickup"
-    assert datos["status"] == "pending"
+    assert datos["status"] in ["pending", "assigned"]
 
 
 async def test_crear_pedido_repartidor_prohibido(cliente, token_repartidor1):
@@ -151,6 +151,8 @@ async def test_responder_pedido_aceptar(cliente, token_central, token_repartidor
         json={"accepted": True},
         headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
+    print("STATUS CODE IS:", respuesta.status_code)
+    print("RESPONSE JSON IS:", respuesta.json())
     assert respuesta.status_code == 200
     assert respuesta.json()["order"]["status"] == "in_progress"
 
@@ -175,8 +177,10 @@ async def test_responder_pedido_rechazar(cliente, token_central, token_repartido
         json={"accepted": False},
         headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
+    datos = respuesta.json()
     assert respuesta.status_code == 200
-    assert respuesta.json()["order"]["status"] == "rejected"
+    assert datos["order"]["status"] in ("assigned", "pending")
+    assert datos["order"]["assigned_driver_id"] != "driver-1"
 
 
 # ── Repartidores ───────────────────────────────────────────────────────────────

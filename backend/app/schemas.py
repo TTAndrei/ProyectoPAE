@@ -97,6 +97,7 @@ class RepartidorRespuesta(BaseModel):
     lng: Optional[float] = None
     heading: Optional[float] = None
     location_updated_at: Optional[str] = None
+    is_available: bool = True
 
 class RutaRespuesta(BaseModel):
     id: str
@@ -122,3 +123,13 @@ class JornadaRespuesta(BaseModel):
     status: str
     start_time: str
     end_time: Optional[str] = None
+
+
+class ActualizarPerfil(BaseModel):
+    name: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+class ActualizarDisponibilidad(BaseModel):
+    is_available: bool

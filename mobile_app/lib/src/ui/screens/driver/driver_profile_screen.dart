@@ -15,7 +15,111 @@ class DriverProfileScreen extends StatefulWidget {
 }
 
 class _DriverProfileScreenState extends State<DriverProfileScreen> {
-  bool _isAvailable = true;
+  String _formatDuration(Duration duration) {
+    if (duration == Duration.zero) return '00:00:00';
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = twoDigits(duration.inHours);
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$hours:$minutes:$seconds';
+  }
+
+  void _showEditProfileDialog(BuildContext context) {
+    final session = context.read<SessionController>();
+    final user = session.user;
+    if (user == null) return;
+
+    final nameController = TextEditingController(text: user.name);
+    final usernameController = TextEditingController(text: user.username);
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Editar Perfil'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Ingresa tu nombre';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: usernameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre de usuario',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Ingresa tu usuario';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Nueva Contraseña (opcional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                
+                final success = await session.updateProfile(
+                  name: nameController.text.trim(),
+                  username: usernameController.text.trim(),
+                  password: passwordController.text.isNotEmpty
+                      ? passwordController.text
+                      : null,
+                );
+                
+                if (!dialogContext.mounted) return;
+                Navigator.of(dialogContext).pop();
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? 'Perfil actualizado correctamente'
+                          : 'Error al actualizar',
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   List<OrderModel> _pendingConfirmationOrders(
     List<OrderModel> orders,
@@ -202,11 +306,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   ),
                   // Edit Action
                   IconButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Editar perfil (No disponible)')),
-                      );
-                    },
+                    onPressed: () => _showEditProfileDialog(context),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.white,
                       padding: const EdgeInsets.all(10),
@@ -255,9 +355,9 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          '07:42:15',
-                          style: TextStyle(
+                        Text(
+                          _formatDuration(driverProv.shiftDuration),
+                          style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF2F2E2E),
@@ -312,6 +412,99 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+
+            // Shift start/end section
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    driverProv.activeJornada != null
+                        ? Icons.timer
+                        : Icons.timer_outlined,
+                    color: driverProv.activeJornada != null
+                        ? AppTheme.primary
+                        : Colors.grey,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          driverProv.activeJornada != null
+                              ? 'TURNO ACTIVO'
+                              : 'SIN TURNO',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: driverProv.activeJornada != null
+                                ? AppTheme.primary
+                                : Colors.grey,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          driverProv.activeJornada != null
+                              ? 'Registrando tiempo de ruta'
+                              : 'Inicia turno para recibir pedidos',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  FilledButton(
+                    onPressed: driverProv.isLoading
+                        ? null
+                        : () {
+                            if (driverProv.activeJornada != null) {
+                              driverProv.endShift();
+                            } else {
+                              driverProv.startShift();
+                            }
+                          },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: driverProv.activeJornada != null
+                          ? const Color(0xFFFDE8E8)
+                          : AppTheme.primary,
+                      foregroundColor: driverProv.activeJornada != null
+                          ? const Color(0xFFB31B25)
+                          : Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      driverProv.activeJornada != null
+                          ? 'Finalizar'
+                          : 'Iniciar',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 28),
 
             // Settings Group ("Ajustes Operativos")
@@ -337,7 +530,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                 children: [
                   // Availability Toggle
                   InkWell(
-                    onTap: () => setState(() => _isAvailable = !_isAvailable),
+                    onTap: () => driverProv.toggleAvailability(!driverProv.isAvailable),
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Row(
@@ -381,9 +574,9 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                           ),
                           // Custom Toggle Switch
                           Switch.adaptive(
-                            value: _isAvailable,
+                            value: driverProv.isAvailable,
                             activeColor: AppTheme.primary,
-                            onChanged: (val) => setState(() => _isAvailable = val),
+                            onChanged: (val) => driverProv.toggleAvailability(val),
                           ),
                         ],
                       ),

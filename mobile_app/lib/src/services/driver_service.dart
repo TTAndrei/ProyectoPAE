@@ -36,4 +36,38 @@ class DriverService {
       heading: heading,
     );
   }
+
+  /// Updates a driver's availability.
+  Future<void> updateDriverAvailability({
+    required String token,
+    required String driverId,
+    required bool isAvailable,
+  }) {
+    return _apiClient.updateDriverAvailability(
+      token: token,
+      driverId: driverId,
+      isAvailable: isAvailable,
+    );
+  }
+
+  /// Retrieves the active shift for the driver.
+  Future<Map<String, dynamic>?> getActiveJornada({
+    required String token,
+  }) {
+    return _apiClient.getActiveJornada(token: token);
+  }
+
+  /// Starts a new work shift.
+  Future<Map<String, dynamic>> startJornada({
+    required String token,
+  }) {
+    return _apiClient.startJornada(token: token);
+  }
+
+  /// Ends the active work shift.
+  Future<Map<String, dynamic>> endJornada({
+    required String token,
+  }) {
+    return _apiClient.endJornada(token: token);
+  }
 }
