@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 typedef WsMessageHandler = void Function(Map<String, dynamic> message);
@@ -24,17 +25,20 @@ class WsService {
     _channel = null;
 
     final uri = _buildWsUri(apiBaseUrl: apiBaseUrl, token: token);
-    print('[WsService] Connecting to: $uri');
+    debugPrint('[WsService] Connecting to: $uri');
     _channel = WebSocketChannel.connect(uri);
 
     _subscription = _channel!.stream.listen(
       (dynamic rawMessage) {
-        print('[WsService] Raw message received: ${rawMessage.runtimeType}');
+        debugPrint(
+            '[WsService] Raw message received: ${rawMessage.runtimeType}');
         if (rawMessage is! String) {
-          print('[WsService] Ignoring non-string message');
+          debugPrint('[WsService] Ignoring non-string message');
           return;
         }
-        print('[WsService] Raw string: ${rawMessage.length > 200 ? rawMessage.substring(0, 200) : rawMessage}');
+        debugPrint(
+          '[WsService] Raw string: ${rawMessage.length > 200 ? rawMessage.substring(0, 200) : rawMessage}',
+        );
         try {
           final decoded = jsonDecode(rawMessage);
           if (decoded is Map<String, dynamic>) {
@@ -43,15 +47,15 @@ class WsService {
             onMessage(Map<String, dynamic>.from(decoded));
           }
         } catch (e) {
-          print('[WsService] JSON decode error: $e');
+          debugPrint('[WsService] JSON decode error: $e');
         }
       },
       onError: (e) {
-        print('[WsService] Stream error: $e');
+        debugPrint('[WsService] Stream error: $e');
         onError?.call(e);
       },
       onDone: () {
-        print('[WsService] Stream done (connection closed)');
+        debugPrint('[WsService] Stream done (connection closed)');
         onDone?.call();
       },
       cancelOnError: false,

@@ -36,10 +36,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1
 Que hace este comando:
 
 - Verifica herramientas base (Python y Flutter)
+- Comprueba que Neo4j este iniciado y escuchando en Bolt
 - Verifica/instala dependencias backend
 - Verifica/instala dependencias Flutter
 - Genera plataformas Flutter faltantes
-- Lanza backend + central + repartidor en 3 terminales
+- Compila Flutter Web
+- Lanza backend en `localhost:8000`
+- Sirve la app web en `localhost:8081`
+- Abre Chrome y Edge para probar central y repartidor en paralelo
 
 Comandos utiles:
 

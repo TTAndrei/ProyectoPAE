@@ -8,7 +8,6 @@ import '../../../providers/driver_provider.dart';
 import '../../../providers/order_provider.dart';
 import '../../../providers/route_provider.dart';
 import '../../../theme/app_theme.dart';
-import '../../widgets/app_button.dart';
 import '../../widgets/app_empty_card.dart';
 import '../../widgets/app_map_pin_icon.dart';
 import '../../widgets/app_metric_pill.dart';
@@ -97,7 +96,9 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
 
   void _mockCallAction(String orderId) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Llamando al cliente/remitente del pedido #$orderId...')),
+      SnackBar(
+          content:
+              Text('Llamando al cliente/remitente del pedido #$orderId...')),
     );
   }
 
@@ -221,9 +222,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
         ? const <LatLng>[]
         : routeProv.isSparseRouteGeometry(routePlan)
             ? const <LatLng>[]
-            : routePlan.routeGeometry
-                .map((p) => LatLng(p.lat, p.lng))
-                .toList();
+            : routePlan.routeGeometry.map((p) => LatLng(p.lat, p.lng)).toList();
 
     final polylines = <Polyline>[
       if (routePoints.length >= 2)
@@ -290,16 +289,19 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate:
+                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                 subdomains: const ['a', 'b', 'c'],
               ),
               PolylineLayer(polylines: polylines),
               MarkerLayer(markers: markers),
             ],
           ),
-          
+
           // Standard Top summary card (Only show if there are no pending orders, to avoid clutter)
-          if (!hasPending && routePlan != null && (routePlan.totalMinutes > 0 || routePlan.totalDistanceKm > 0))
+          if (!hasPending &&
+              routePlan != null &&
+              (routePlan.totalMinutes > 0 || routePlan.totalDistanceKm > 0))
             Positioned(
               top: 16,
               left: 16,
@@ -330,18 +332,21 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                         AppMetricPill(
                           icon: Icons.schedule,
                           label: 'Tiempo est.',
-                          value: '${routePlan.totalMinutes.toStringAsFixed(1)} min',
+                          value:
+                              '${routePlan.totalMinutes.toStringAsFixed(1)} min',
                         ),
                         AppMetricPill(
                           icon: Icons.route,
                           label: 'Distancia',
-                          value: '${routePlan.totalDistanceKm.toStringAsFixed(2)} km',
+                          value:
+                              '${routePlan.totalDistanceKm.toStringAsFixed(2)} km',
                         ),
                         if (widget.lastAcceptedExtraMinutes != null)
                           AppMetricPill(
                             icon: Icons.add_road,
                             label: 'Último extra',
-                            value: '${widget.lastAcceptedExtraMinutes!.toStringAsFixed(1)} min',
+                            value:
+                                '${widget.lastAcceptedExtraMinutes!.toStringAsFixed(1)} min',
                           ),
                       ],
                     ),
@@ -376,7 +381,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                     padding: const EdgeInsets.all(16.0),
                     child: hasPending
                         ? _buildNotificationPanel(context, currentPanelOrder)
-                        : _buildActiveDeliveryPanel(context, currentPanelOrder, routePlan, isLoading),
+                        : _buildActiveDeliveryPanel(
+                            context, currentPanelOrder, routePlan, isLoading),
                   ),
                 ),
               ),
@@ -426,15 +432,17 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
               context: context,
               builder: (dialogCtx) => OrderDetailsDialog(
                 order: order,
-                onNavigate: () => _mapController.move(LatLng(order.lat, order.lng), 15.5),
+                onNavigate: () =>
+                    _mapController.move(LatLng(order.lat, order.lng), 15.5),
                 onComplete: () async {
                   final messenger = ScaffoldMessenger.of(context);
                   try {
                     await context.read<OrderProvider>().updateOrderStatus(
-                      orderId: order.id,
-                      status: 'completed',
-                      actionLabel: order.type == 'pickup' ? 'recogido' : 'entregado',
-                    );
+                          orderId: order.id,
+                          status: 'completed',
+                          actionLabel:
+                              order.type == 'pickup' ? 'recogido' : 'entregado',
+                        );
                     messenger.showSnackBar(
                       SnackBar(
                         content: Text(
@@ -446,7 +454,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                     );
                   } catch (e) {
                     messenger.showSnackBar(
-                      SnackBar(content: Text('Error al actualizar el pedido: $e')),
+                      SnackBar(
+                          content: Text('Error al actualizar el pedido: $e')),
                     );
                   }
                 },
@@ -475,7 +484,9 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isPickup ? '¡Nueva Recogida Asignada!' : '¡Nueva Entrega Asignada!',
+                      isPickup
+                          ? '¡Nueva Recogida Asignada!'
+                          : '¡Nueva Entrega Asignada!',
                       style: const TextStyle(
                         fontFamily: 'Manrope',
                         fontSize: 16,
@@ -499,7 +510,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        
+
         // Accept / Ignore buttons
         Row(
           children: [
@@ -509,7 +520,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                 child: FilledButton(
                   onPressed: () => _respondToPickup(context, order, true),
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF9E3100), // Solid brown-orange
+                    backgroundColor:
+                        const Color(0xFF9E3100), // Solid brown-orange
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -543,7 +555,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
           ],
         ),
         const Divider(height: 24, color: Color(0xFFEAE7E7)),
-        
+
         // Package Info & Distance
         Row(
           children: [
@@ -610,7 +622,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
               child: SizedBox(
                 height: 48,
                 child: FilledButton.icon(
-                  onPressed: () => _mapController.move(LatLng(order.lat, order.lng), 15.5),
+                  onPressed: () =>
+                      _mapController.move(LatLng(order.lat, order.lng), 15.5),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.primary,
                     shape: RoundedRectangleBorder(
@@ -719,15 +732,17 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
               context: context,
               builder: (dialogCtx) => OrderDetailsDialog(
                 order: order,
-                onNavigate: () => _mapController.move(LatLng(order.lat, order.lng), 15.5),
+                onNavigate: () =>
+                    _mapController.move(LatLng(order.lat, order.lng), 15.5),
                 onComplete: () async {
                   final messenger = ScaffoldMessenger.of(context);
                   try {
                     await context.read<OrderProvider>().updateOrderStatus(
-                      orderId: order.id,
-                      status: 'completed',
-                      actionLabel: order.type == 'pickup' ? 'recogido' : 'entregado',
-                    );
+                          orderId: order.id,
+                          status: 'completed',
+                          actionLabel:
+                              order.type == 'pickup' ? 'recogido' : 'entregado',
+                        );
                     messenger.showSnackBar(
                       SnackBar(
                         content: Text(
@@ -739,7 +754,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                     );
                   } catch (e) {
                     messenger.showSnackBar(
-                      SnackBar(content: Text('Error al actualizar el pedido: $e')),
+                      SnackBar(
+                          content: Text('Error al actualizar el pedido: $e')),
                     );
                   }
                 },
@@ -761,7 +777,9 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
               ),
               const SizedBox(height: 2),
               Text(
-                isPickup ? 'Recoger de ${order.name ?? "Proveedor"}' : 'Entregar a ${order.name ?? "Cliente"}',
+                isPickup
+                    ? 'Recoger de ${order.name ?? "Proveedor"}'
+                    : 'Entregar a ${order.name ?? "Cliente"}',
                 style: const TextStyle(
                   fontFamily: 'Manrope',
                   fontSize: 18,
@@ -771,11 +789,12 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              
+
               // Location row
               Row(
                 children: [
-                  Icon(Icons.place_outlined, size: 14, color: Colors.grey.shade500),
+                  Icon(Icons.place_outlined,
+                      size: 14, color: Colors.grey.shade500),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
@@ -838,7 +857,9 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    routePlan != null ? '${routePlan.totalDistanceKm.toStringAsFixed(2)} Km' : 'Calculando...',
+                    routePlan != null
+                        ? '${routePlan.totalDistanceKm.toStringAsFixed(2)} Km'
+                        : 'Calculando...',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
@@ -859,7 +880,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
               child: SizedBox(
                 height: 48,
                 child: FilledButton.icon(
-                  onPressed: () => _mapController.move(LatLng(order.lat, order.lng), 15.5),
+                  onPressed: () =>
+                      _mapController.move(LatLng(order.lat, order.lng), 15.5),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.primary,
                     shape: RoundedRectangleBorder(

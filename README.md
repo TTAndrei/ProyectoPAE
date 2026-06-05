@@ -124,7 +124,7 @@ Notas:
 - Android Emulator usa `10.0.2.2` para acceder al host local.
 - En iOS Simulator suele funcionar `http://localhost:8000`.
 
-## Arranque por consola (1 comando, 3 terminales)
+## Arranque por consola (demo estable)
 
 ## Arranque visual para demo (Flutter)
 
@@ -149,10 +149,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1
 Este script hace todo automaticamente:
 
 - Verifica Python y Flutter en PATH
+- Comprueba que Neo4j este iniciado antes de arrancar backend/Flutter
 - Verifica/instala backend (`pip install -r backend/requirements.txt`)
 - Verifica/instala mobile (`flutter pub get`)
 - Genera plataformas Flutter faltantes para los dispositivos elegidos
-- Lanza 3 terminales: backend, app central y app repartidor
+- Compila Flutter Web con `flutter build web`
+- Lanza backend en `localhost:8000`
+- Sirve la app web en `localhost:8081`
+- Abre dos navegadores: Chrome para central y Edge para repartidor
 
 Parametros utiles:
 
@@ -166,11 +170,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1 -NoLaunch
 # Cambiar dispositivos Flutter
 powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1 -CentralDevice chrome -DriverDevice edge
 
-# Cambiar URL API para flutter run
+# Cambiar URL API usada en la build Flutter Web
 powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1 -ApiBaseUrl http://10.0.2.2:8000
 ```
 
-Para detener rapido las 3 terminales abiertas por el script:
+Para detener rapido los procesos y navegadores abiertos por el script:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\stop-demo.ps1

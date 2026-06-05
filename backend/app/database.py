@@ -40,6 +40,7 @@ def inicializar_bd():
 def _sembrar_datos(session):
     result = session.run("MATCH (u:User) RETURN count(u) AS count")
     if result.single()["count"] > 0:
+        _asegurar_rutas_repartidores(session)
         return
 
     usuarios = [
@@ -89,6 +90,7 @@ def _sembrar_datos(session):
 
     rutas = [
         {"id": "route-1", "driver_id": "driver-1", "order_ids": ["order-1", "order-2"], "status": "active"},
+        {"id": "route-2", "driver_id": "driver-2", "order_ids": [], "status": "active"},
     ]
     for r in rutas:
         session.run("""
@@ -111,3 +113,17 @@ def _sembrar_datos(session):
             MATCH (u:User {id: $driver_id})
             SET u.lat = $lat, u.lng = $lng, u.heading = 0, u.location_updated_at = datetime()
         """, loc)
+
+
+def _asegurar_rutas_repartidores(session):
+    session.run("""
+        MATCH (u:User {role: 'repartidor'})
+        WHERE NOT (u)-[:HAS_ROUTE]->(:Route {status: 'active'})
+        CREATE (u)-[:HAS_ROUTE]->(:Route {
+            id: randomUUID(),
+            order_ids: [],
+            status: 'active',
+            created_at: datetime(),
+            updated_at: datetime()
+        })
+    """)

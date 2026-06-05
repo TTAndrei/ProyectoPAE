@@ -91,7 +91,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             FilledButton(
               onPressed: () async {
                 if (!formKey.currentState!.validate()) return;
-                
+
                 final success = await session.updateProfile(
                   name: nameController.text.trim(),
                   username: usernameController.text.trim(),
@@ -99,10 +99,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                       ? passwordController.text
                       : null,
                 );
-                
+
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
-                
+
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
@@ -173,7 +173,13 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final totalStops = completedCount + pendingCount + activeCount;
 
     final nameInitials = user.name.isNotEmpty
-        ? user.name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
+        ? user.name
+            .trim()
+            .split(' ')
+            .map((e) => e[0])
+            .take(2)
+            .join()
+            .toUpperCase()
         : '?';
 
     return Scaffold(
@@ -286,7 +292,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: AppTheme.secondary.withValues(alpha: 0.1),
+                                color:
+                                    AppTheme.secondary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -530,7 +537,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                 children: [
                   // Availability Toggle
                   InkWell(
-                    onTap: () => driverProv.toggleAvailability(!driverProv.isAvailable),
+                    onTap: () =>
+                        driverProv.toggleAvailability(!driverProv.isAvailable),
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Row(
@@ -575,15 +583,17 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                           // Custom Toggle Switch
                           Switch.adaptive(
                             value: driverProv.isAvailable,
-                            activeColor: AppTheme.primary,
-                            onChanged: (val) => driverProv.toggleAvailability(val),
+                            activeThumbColor: AppTheme.primary,
+                            onChanged: (val) =>
+                                driverProv.toggleAvailability(val),
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const Divider(height: 1, indent: 66, color: Color(0xFFEAE7E7)),
-                  
+                  const Divider(
+                      height: 1, indent: 66, color: Color(0xFFEAE7E7)),
+
                   // Notification Preferences
                   _buildSettingsRow(
                     icon: Icons.notifications_active,
@@ -593,7 +603,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     subtitle: 'Alertas Push, SMS y Urgentes',
                     onTap: () {},
                   ),
-                  const Divider(height: 1, indent: 66, color: Color(0xFFEAE7E7)),
+                  const Divider(
+                      height: 1, indent: 66, color: Color(0xFFEAE7E7)),
 
                   // Navigation App Choice
                   _buildSettingsRow(
@@ -638,8 +649,8 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     subtitle: 'Español (Estados Unidos)',
                     onTap: () {},
                   ),
-                  const Divider(height: 1, indent: 66, color: Color(0xFFEAE7E7)),
-                  
+                  const Divider(
+                      height: 1, indent: 66, color: Color(0xFFEAE7E7)),
                   _buildSettingsRow(
                     icon: Icons.support_agent,
                     iconBg: Colors.grey.shade300.withValues(alpha: 0.5),
@@ -660,8 +671,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
               child: FilledButton.icon(
                 onPressed: () => session.logout(),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFFDE8E8), // Light red background
-                  foregroundColor: const Color(0xFFB31B25), // On-error-container text
+                  backgroundColor:
+                      const Color(0xFFFDE8E8), // Light red background
+                  foregroundColor:
+                      const Color(0xFFB31B25), // On-error-container text
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

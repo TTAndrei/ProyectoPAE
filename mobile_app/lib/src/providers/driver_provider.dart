@@ -18,17 +18,24 @@ class DriverProvider extends ChangeNotifier {
     required String token,
     required String apiBaseUrl,
     required AppUser user,
+    bool autoConnect = true,
+    bool enablePolling = true,
+    Duration refreshInterval = const Duration(seconds: 8),
   })  : _driverService = driverService,
         _routeService = routeService,
         _token = token,
         _apiBaseUrl = apiBaseUrl,
         _user = user {
     _loadData();
-    _connectWs();
-    _refreshTimer = Timer.periodic(
-      const Duration(seconds: 8),
-      (_) => _loadData(showLoader: false),
-    );
+    if (autoConnect) {
+      _connectWs();
+    }
+    if (enablePolling) {
+      _refreshTimer = Timer.periodic(
+        refreshInterval,
+        (_) => _loadData(showLoader: false),
+      );
+    }
     _secondsTimer = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
@@ -57,12 +64,16 @@ class DriverProvider extends ChangeNotifier {
   final List<String> _events = <String>[];
   bool _isAvailable = true;
   Map<String, dynamic>? _activeJornada;
+  final Set<String> _notifiedAssignedOrderIds = <String>{};
 
-  final _incomingOrderStreamController = StreamController<AssignOrderResult>.broadcast();
+  final _incomingOrderStreamController =
+      StreamController<AssignOrderResult>.broadcast();
   final _wsRefreshController = StreamController<void>.broadcast();
 
   // ── Getters ──────────────────────────────────────────────────────
-  Stream<AssignOrderResult> get incomingOrderNotifications => _incomingOrderStreamController.stream;
+  Stream<AssignOrderResult> get incomingOrderNotifications =>
+      _incomingOrderStreamController.stream;
+
   /// Stream that fires when WS events indicate orders should be refreshed.
   Stream<void> get wsRefreshStream => _wsRefreshController.stream;
   bool get isLoading => _isLoading;
@@ -101,13 +112,13 @@ class DriverProvider extends ChangeNotifier {
 
   // ── WebSocket ────────────────────────────────────────────────────
   void _connectWs() {
-    print('[DriverProvider] Connecting WS for user ${_user.id}...');
+    debugPrint('[DriverProvider] Connecting WS for user ${_user.id}...');
     _wsService.connect(
       apiBaseUrl: _apiBaseUrl,
       token: _token,
       onMessage: (payload) {
         final type = payload['type']?.toString() ?? 'event';
-        print('[DriverProvider] WS message received: type=$type');
+        debugPrint('[DriverProvider] WS message received: type=$type');
         _pushEvent('WS: $type');
 
         if (type == 'pickup:auto_assigned' ||
@@ -120,26 +131,26 @@ class DriverProvider extends ChangeNotifier {
 
         // Notification of newly assigned order needing confirmation: notify via stream
         if (type == 'pickup:notification' || type == 'pickup:auto_assigned') {
-          print('[DriverProvider] ✅ Nuevo pedido asignado recibido (requiere confirmacion)');
+          debugPrint('[DriverProvider] Nuevo pedido asignado recibido');
           try {
             final assignment = AssignOrderResult.fromJson(payload);
-            _incomingOrderStreamController.add(assignment);
+            _emitAssignmentIfNew(assignment);
           } catch (e) {
-            print('[DriverProvider] Error parsing notification: $e');
+            debugPrint('[DriverProvider] Error parsing notification: $e');
             _pushEvent('Error parseo asignacion: $e');
           }
         }
       },
       onError: (error) {
-        print('[DriverProvider] WS error: $error');
+        debugPrint('[DriverProvider] WS error: $error');
         _pushEvent('WS error: $error');
       },
       onDone: () {
-        print('[DriverProvider] WS disconnected');
+        debugPrint('[DriverProvider] WS disconnected');
         _pushEvent('WS disconnected');
       },
     );
-    print('[DriverProvider] WS connect() called');
+    debugPrint('[DriverProvider] WS connect() called');
   }
 
   void sendWsMessage(Map<String, dynamic> payload) {
@@ -150,6 +161,13 @@ class DriverProvider extends ChangeNotifier {
     _events.insert(0, value);
     if (_events.length > 8) _events.removeLast();
     notifyListeners();
+  }
+
+  void _emitAssignmentIfNew(AssignOrderResult assignment) {
+    if (!_notifiedAssignedOrderIds.add(assignment.order.id)) {
+      return;
+    }
+    _incomingOrderStreamController.add(assignment);
   }
 
   // ── Data loading ─────────────────────────────────────────────────
@@ -184,15 +202,18 @@ class DriverProvider extends ChangeNotifier {
       }
 
       // Check if there are any assigned orders needing acceptance and push them
-      final assignedOrders = newRoutePlan.orders.where((o) => o.status == 'assigned').toList();
+      final assignedOrders =
+          newRoutePlan.orders.where((o) => o.status == 'assigned').toList();
+      final assignedOrderIds = assignedOrders.map((order) => order.id).toSet();
+      _notifiedAssignedOrderIds
+          .removeWhere((orderId) => !assignedOrderIds.contains(orderId));
       if (assignedOrders.isNotEmpty) {
-        print('[DriverProvider] Found ${assignedOrders.length} assigned orders needing confirmation. Pushing notifications...');
         for (final order in assignedOrders) {
           final assignment = AssignOrderResult(
             order: order,
             extraMinutes: order.estimatedExtraMinutes ?? 0.0,
           );
-          _incomingOrderStreamController.add(assignment);
+          _emitAssignmentIfNew(assignment);
         }
       }
 

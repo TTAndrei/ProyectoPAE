@@ -4,6 +4,28 @@ import subprocess
 import threading
 import os
 
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
+def run_powershell_script(arguments):
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    result = subprocess.run(
+        arguments,
+        startupinfo=startupinfo,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=PROJECT_ROOT,
+    )
+    if result.returncode != 0:
+        output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+        if not output:
+            output = f"El comando termino con codigo {result.returncode}."
+        raise RuntimeError(output[-4000:])
+
 class DemoLauncherApp:
     def __init__(self, root):
         self.root = root
@@ -50,12 +72,8 @@ class DemoLauncherApp:
     def run_start_script(self):
         try:
             # Ejecutar script de powershell de inicio sin abrir ventana de consola
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            subprocess.run(
+            run_powershell_script(
                 ["powershell.exe", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", "scripts/start-demo.ps1", "-ForceRestart"],
-                startupinfo=startupinfo,
-                check=True
             )
             self.root.after(0, self.on_started)
         except Exception as e:
@@ -64,12 +82,8 @@ class DemoLauncherApp:
 
     def run_stop_script(self):
         try:
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            subprocess.run(
+            run_powershell_script(
                 ["powershell.exe", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", "scripts/stop-demo.ps1"],
-                startupinfo=startupinfo,
-                check=True
             )
             self.root.after(0, self.on_stopped)
         except Exception as e:
@@ -89,6 +103,7 @@ class DemoLauncherApp:
         self.stop_btn.config(state=tk.DISABLED)
 
 if __name__ == "__main__":
+    os.chdir(PROJECT_ROOT)
     if not os.path.exists("scripts/start-demo.ps1"):
         root = tk.Tk()
         root.withdraw()

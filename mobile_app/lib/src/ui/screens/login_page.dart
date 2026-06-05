@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../state/session_controller.dart';
-import '../../theme/app_theme.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_text_field.dart';
 
@@ -76,15 +75,15 @@ class _LoginPageState extends State<LoginPage> {
                   filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: Colors.white.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.12),
+                        color: Colors.white.withValues(alpha: 0.12),
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 30,
                           spreadRadius: 5,
                         ),
@@ -112,7 +111,7 @@ class _LoginPageState extends State<LoginPage> {
                           Text(
                             'Gestión de rutas de última milla',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
+                              color: Colors.white.withValues(alpha: 0.7),
                               fontSize: 14,
                             ),
                           ),
@@ -124,10 +123,14 @@ class _LoginPageState extends State<LoginPage> {
                                 AppTextField(
                                   controller: _usernameController,
                                   labelText: 'Usuario',
-                                  fillColor: Colors.white.withOpacity(0.08),
+                                  fillColor:
+                                      Colors.white.withValues(alpha: 0.08),
                                   style: const TextStyle(color: Colors.white),
-                                  labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-                                  focusedBorderColor: Colors.white.withOpacity(0.3),
+                                  labelStyle: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.7)),
+                                  focusedBorderColor:
+                                      Colors.white.withValues(alpha: 0.3),
                                   validator: (value) {
                                     if (value == null || value.trim().isEmpty) {
                                       return 'Ingresa tu usuario';
@@ -140,10 +143,14 @@ class _LoginPageState extends State<LoginPage> {
                                   controller: _passwordController,
                                   obscureText: true,
                                   labelText: 'Contraseña',
-                                  fillColor: Colors.white.withOpacity(0.08),
+                                  fillColor:
+                                      Colors.white.withValues(alpha: 0.08),
                                   style: const TextStyle(color: Colors.white),
-                                  labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-                                  focusedBorderColor: Colors.white.withOpacity(0.3),
+                                  labelStyle: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.7)),
+                                  focusedBorderColor:
+                                      Colors.white.withValues(alpha: 0.3),
                                   validator: (value) {
                                     if (value == null || value.isEmpty) {
                                       return 'Ingresa tu contraseña';
@@ -157,7 +164,8 @@ class _LoginPageState extends State<LoginPage> {
                                   height: 48,
                                   child: AppButton(
                                     text: 'Entrar',
-                                    onPressed: session.isLoading ? null : _submit,
+                                    onPressed:
+                                        session.isLoading ? null : _submit,
                                     isLoading: session.isLoading,
                                   ),
                                 ),
@@ -166,14 +174,15 @@ class _LoginPageState extends State<LoginPage> {
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.04),
+                                    color: Colors.white.withValues(alpha: 0.04),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
                                     'Demo: central/central123, driver1/driver123, driver2/driver123',
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color: Colors.white.withOpacity(0.6),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.6),
                                       height: 1.4,
                                     ),
                                   ),
