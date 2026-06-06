@@ -243,3 +243,26 @@ async def test_obtener_ruta_repartidor(cliente, token_repartidor1):
     assert "leg_minutes" in datos
     assert isinstance(datos["route_geometry"], list)
     assert isinstance(datos["leg_minutes"], list)
+
+
+# ── Registro de Conductores ───────────────────────────────────────────────────
+
+async def test_registrar_repartidor_con_compania(cliente, token_central):
+    """La central debe poder registrar un nuevo conductor y este debe asociarse a su compañía."""
+    username_nuevo = "driver_test_new"
+    respuesta = await cliente.post(
+        "/auth/register",
+        json={
+            "username": username_nuevo,
+            "password": "driver123password",
+            "role": "repartidor",
+            "name": "Driver Test Registrado"
+        },
+        headers={"Authorization": f"Bearer {token_central}"}
+    )
+    assert respuesta.status_code == 201
+    datos = respuesta.json()
+    assert datos["username"] == username_nuevo
+    assert datos["name"] == "Driver Test Registrado"
+    assert datos["company"] is not None
+    assert datos["company"]["id"] == "pae-logistics"

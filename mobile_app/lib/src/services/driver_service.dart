@@ -1,3 +1,4 @@
+import '../models/app_user.dart';
 import '../models/driver_model.dart';
 import 'api_client.dart';
 
@@ -69,5 +70,20 @@ class DriverService {
     required String token,
   }) {
     return _apiClient.endJornada(token: token);
+  }
+
+  /// Registers a new driver.
+  Future<AppUser> registerDriver({
+    required String token,
+    required String username,
+    required String password,
+    required String name,
+  }) {
+    return _apiClient.registerDriver(
+      token: token,
+      username: username,
+      password: password,
+      name: name,
+    );
   }
 }

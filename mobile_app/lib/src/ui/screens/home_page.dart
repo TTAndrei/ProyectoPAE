@@ -12,7 +12,7 @@ import '../../services/order_service.dart';
 import '../../services/route_service.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_theme.dart';
-import 'central_page.dart';
+import 'central/central_page.dart';
 import '../widgets/driver_nav_bar.dart';
 
 class HomePage extends StatelessWidget {

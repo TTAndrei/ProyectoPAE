@@ -425,6 +425,30 @@ class ApiClient {
     }
     return Map<String, dynamic>.from(decoded);
   }
+
+  Future<AppUser> registerDriver({
+    required String token,
+    required String username,
+    required String password,
+    required String name,
+  }) async {
+    final response = await _httpClient.post(
+      _buildUri('/auth/register'),
+      headers: _headers(token: token),
+      body: jsonEncode({
+        'username': username,
+        'password': password,
+        'role': 'repartidor',
+        'name': name,
+      }),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid register response format');
+    }
+    return AppUser.fromJson(Map<String, dynamic>.from(decoded));
+  }
 }
 
 class GeocodeCandidate {

@@ -14,12 +14,34 @@ def listar_repartidores(_: dict = Depends(requerir_central)):
     with obtener_conexion() as session:
         result = session.run("""
             MATCH (u:User {role: 'repartidor'})
+            OPTIONAL MATCH (u)-[:BELONGS_TO]->(c:Company)
             RETURN u.id AS id, u.username AS username, u.name AS name,
                    u.lat AS lat, u.lng AS lng, u.heading AS heading,
                    toString(u.location_updated_at) AS location_updated_at,
-                   coalesce(u.is_available, true) AS is_available
+                   coalesce(u.is_available, true) AS is_available,
+                   c.id AS company_id, c.name AS company_name
         """)
-        return [record.data() for record in result]
+        repartidores = []
+        for record in result:
+            data = record.data()
+            company = None
+            if data.get("company_id"):
+                company = {
+                    "id": data["company_id"],
+                    "name": data["company_name"]
+                }
+            repartidores.append({
+                "id": data["id"],
+                "username": data["username"],
+                "name": data["name"],
+                "lat": data["lat"],
+                "lng": data["lng"],
+                "heading": data["heading"],
+                "location_updated_at": data["location_updated_at"],
+                "is_available": data["is_available"],
+                "company": company
+            })
+        return repartidores
 
 
 @enrutador.get("/{id_repartidor}/location")

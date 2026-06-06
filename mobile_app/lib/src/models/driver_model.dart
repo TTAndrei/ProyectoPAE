@@ -1,3 +1,5 @@
+import 'app_user.dart';
+
 double? _asNullableDouble(dynamic value) {
   if (value == null) {
     return null;
@@ -21,6 +23,7 @@ class DriverModel {
     this.heading,
     this.locationUpdatedAt,
     this.isAvailable = true,
+    this.company,
   });
 
   final String id;
@@ -31,6 +34,7 @@ class DriverModel {
   final double? heading;
   final String? locationUpdatedAt;
   final bool isAvailable;
+  final CompanyModel? company;
 
   String get shortLocation {
     if (lat == null || lng == null) {
@@ -49,6 +53,9 @@ class DriverModel {
       heading: _asNullableDouble(json['heading']),
       locationUpdatedAt: json['location_updated_at']?.toString(),
       isAvailable: json['is_available'] == null ? true : (json['is_available'] as bool),
+      company: json['company'] != null
+          ? CompanyModel.fromJson(Map<String, dynamic>.from(json['company'] as Map))
+          : null,
     );
   }
 }

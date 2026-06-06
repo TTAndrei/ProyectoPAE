@@ -33,13 +33,26 @@ def inicializar_bd():
         session.run("CREATE CONSTRAINT order_id_unique IF NOT EXISTS FOR (o:Order) REQUIRE o.id IS UNIQUE")
         session.run("CREATE CONSTRAINT route_id_unique IF NOT EXISTS FOR (r:Route) REQUIRE r.id IS UNIQUE")
         session.run("CREATE CONSTRAINT jornada_id_unique IF NOT EXISTS FOR (j:Jornada) REQUIRE j.id IS UNIQUE")
+        session.run("CREATE CONSTRAINT company_id_unique IF NOT EXISTS FOR (c:Company) REQUIRE c.id IS UNIQUE")
         session.run("CREATE INDEX order_status_idx IF NOT EXISTS FOR (o:Order) ON (o.status)")
 
         _sembrar_datos(session)
 
 def _sembrar_datos(session):
+    # Asegurar que la compañía demo exista
+    session.run("""
+        MERGE (c:Company {id: 'pae-logistics'})
+        ON CREATE SET c.name = 'PAE Logistics'
+    """)
+
     result = session.run("MATCH (u:User) RETURN count(u) AS count")
     if result.single()["count"] > 0:
+        # Vincular usuarios existentes a la compañía
+        session.run("""
+            MATCH (u:User)
+            MATCH (c:Company {id: 'pae-logistics'})
+            MERGE (u)-[:BELONGS_TO]->(c)
+        """)
         _asegurar_rutas_repartidores(session)
         return
 
@@ -59,6 +72,9 @@ def _sembrar_datos(session):
                 is_available: $is_available,
                 created_at: datetime()
             })
+            WITH u
+            MATCH (c:Company {id: 'pae-logistics'})
+            CREATE (u)-[:BELONGS_TO]->(c)
         """, u)
 
     pedidos = [

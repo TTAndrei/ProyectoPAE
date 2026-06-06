@@ -8,6 +8,11 @@ class SolicitudLogin(BaseModel):
     password: str
 
 
+class CompaniaRespuesta(BaseModel):
+    id: str
+    name: str
+
+
 class CrearUsuario(BaseModel):
     username: str
     password: str
@@ -27,6 +32,7 @@ class UsuarioRespuesta(BaseModel):
     username: str
     role: str
     name: str
+    company: Optional[CompaniaRespuesta] = None
 
 
 class RespuestaToken(BaseModel):
@@ -98,6 +104,7 @@ class RepartidorRespuesta(BaseModel):
     heading: Optional[float] = None
     location_updated_at: Optional[str] = None
     is_available: bool = True
+    company: Optional[CompaniaRespuesta] = None
 
 class RutaRespuesta(BaseModel):
     id: str

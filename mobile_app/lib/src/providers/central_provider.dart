@@ -82,4 +82,30 @@ class CentralProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<void> registerDriver({
+    required String username,
+    required String password,
+    required String name,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _driverService.registerDriver(
+        token: _token,
+        username: username,
+        password: password,
+        name: name,
+      );
+      await _loadDrivers(showLoader: false);
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 }
