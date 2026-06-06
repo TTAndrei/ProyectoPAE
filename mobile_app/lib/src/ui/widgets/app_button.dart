@@ -21,14 +21,18 @@ class AppButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600);
-    
+    final textStyle = Theme.of(context)
+        .textTheme
+        .labelLarge
+        ?.copyWith(fontWeight: FontWeight.w600);
+
     Widget buildChild(Color progressColor) {
       if (isLoading) {
         return SizedBox(
           height: 20,
           width: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, color: progressColor),
+          child:
+              CircularProgressIndicator(strokeWidth: 2, color: progressColor),
         );
       }
       if (icon != null) {

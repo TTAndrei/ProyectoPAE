@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../models/driver_model.dart';
 import '../../../models/order_model.dart';
 import '../../../providers/driver_provider.dart';
 import '../../../providers/order_provider.dart';
@@ -164,6 +165,7 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final orderProv = context.watch<OrderProvider>();
 
     final user = driverProv.user;
+    final kpis = driverProv.kpis;
     final orders = orderProv.orders;
     final routeOrders = driverProv.routeOrders;
 
@@ -594,6 +596,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   const Divider(
                       height: 1, indent: 66, color: Color(0xFFEAE7E7)),
 
+                  _buildKpiSettingsRow(kpis),
+                  const Divider(
+                      height: 1, indent: 66, color: Color(0xFFEAE7E7)),
+
                   // Notification Preferences
                   _buildSettingsRow(
                     icon: Icons.notifications_active,
@@ -768,6 +774,77 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildKpiSettingsRow(DriverKpiModel? kpis) {
+    final target = kpis == null
+        ? '75'
+        : (kpis.targetLoadEfficiencyRatio * 100).toStringAsFixed(0);
+    final subtitle = kpis == null
+        ? 'Calculando ratio de eficiencia de carga'
+        : '${kpis.loadDistanceLabel} cargados, objetivo $target%';
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppTheme.secondary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.show_chart,
+              color: AppTheme.secondary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ratio eficiencia de carga',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2F2E2E),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (kpis == null)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Chip(
+              avatar: Icon(
+                kpis.meetsLoadEfficiencyTarget
+                    ? Icons.check_circle
+                    : Icons.trending_down,
+                size: 16,
+              ),
+              label: Text(kpis.loadEfficiencyLabel),
+              visualDensity: VisualDensity.compact,
+            ),
+        ],
       ),
     );
   }

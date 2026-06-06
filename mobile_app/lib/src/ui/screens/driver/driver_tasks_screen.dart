@@ -233,7 +233,8 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
                             boxShadow: _showUpcoming
                                 ? [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.05),
+                                      color:
+                                          Colors.black.withValues(alpha: 0.05),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     )
@@ -269,7 +270,8 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
                             boxShadow: !_showUpcoming
                                 ? [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.05),
+                                      color:
+                                          Colors.black.withValues(alpha: 0.05),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     )
@@ -386,7 +388,9 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _showUpcoming ? 'PARADAS RESTANTES' : 'COMPLETADAS',
+                                _showUpcoming
+                                    ? 'PARADAS RESTANTES'
+                                    : 'COMPLETADAS',
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.w600,
@@ -437,7 +441,8 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
                 }),
             ] else ...[
               if (completedOrders.isEmpty)
-                AppEmptyCard(message: 'No has completado ninguna tarea todavía.')
+                AppEmptyCard(
+                    message: 'No has completado ninguna tarea todavía.')
               else
                 ...completedOrders.asMap().entries.map((entry) {
                   final index = entry.key;
@@ -726,7 +731,8 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              if (order.estimatedExtraMinutes != null && !isCompleted)
+                              if (order.estimatedExtraMinutes != null &&
+                                  !isCompleted)
                                 Text(
                                   'Extra: ${order.estimatedExtraMinutes!.toStringAsFixed(1)} min',
                                   style: TextStyle(

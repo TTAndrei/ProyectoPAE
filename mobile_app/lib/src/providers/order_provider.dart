@@ -102,8 +102,7 @@ class OrderProvider extends ChangeNotifier {
 
       final incoming = <String, DriverRoutePlan>{};
       if (activeDriverIds.isNotEmpty) {
-        final entries =
-            await Future.wait<MapEntry<String, DriverRoutePlan>?>(
+        final entries = await Future.wait<MapEntry<String, DriverRoutePlan>?>(
           activeDriverIds.map((driverId) async {
             try {
               final plan = await _routeService.getRoutePlan(

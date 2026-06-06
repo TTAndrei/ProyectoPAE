@@ -21,6 +21,11 @@ class DriverService {
     return _apiClient.getDriverLocation(token: token, driverId: driverId);
   }
 
+  /// Fetches KPI metrics for the authenticated driver.
+  Future<DriverKpiModel> getMyDriverKpis({required String token}) {
+    return _apiClient.getMyDriverKpis(token: token);
+  }
+
   /// Updates a driver's location on the server.
   Future<void> updateDriverLocation({
     required String token,

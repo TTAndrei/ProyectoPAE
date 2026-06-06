@@ -24,6 +24,7 @@ class DriverModel {
     this.locationUpdatedAt,
     this.isAvailable = true,
     this.company,
+    this.kpis,
   });
 
   final String id;
@@ -35,6 +36,7 @@ class DriverModel {
   final String? locationUpdatedAt;
   final bool isAvailable;
   final CompanyModel? company;
+  final DriverKpiModel? kpis;
 
   String get shortLocation {
     if (lat == null || lng == null) {
@@ -52,10 +54,67 @@ class DriverModel {
       lng: _asNullableDouble(json['lng']),
       heading: _asNullableDouble(json['heading']),
       locationUpdatedAt: json['location_updated_at']?.toString(),
-      isAvailable: json['is_available'] == null ? true : (json['is_available'] as bool),
+      isAvailable:
+          json['is_available'] == null ? true : (json['is_available'] as bool),
       company: json['company'] != null
           ? CompanyModel.fromJson(Map<String, dynamic>.from(json['company'] as Map))
           : null,
+      kpis: DriverKpiModel.fromJson(json),
+    );
+  }
+}
+
+class DriverKpiModel {
+  const DriverKpiModel({
+    required this.driverId,
+    required this.loadEfficiencyRatio,
+    required this.loadEfficiencyPercent,
+    required this.loadedDistanceKm,
+    required this.totalDistanceKm,
+    required this.activeOrderCount,
+    required this.pendingConfirmationCount,
+    required this.completedOrderCount,
+    required this.targetLoadEfficiencyRatio,
+    required this.meetsLoadEfficiencyTarget,
+    required this.measurementNote,
+  });
+
+  final String driverId;
+  final double loadEfficiencyRatio;
+  final double loadEfficiencyPercent;
+  final double loadedDistanceKm;
+  final double totalDistanceKm;
+  final int activeOrderCount;
+  final int pendingConfirmationCount;
+  final int completedOrderCount;
+  final double targetLoadEfficiencyRatio;
+  final bool meetsLoadEfficiencyTarget;
+  final String measurementNote;
+
+  String get loadEfficiencyLabel =>
+      '${loadEfficiencyPercent.toStringAsFixed(1)}%';
+
+  String get loadDistanceLabel =>
+      '${loadedDistanceKm.toStringAsFixed(2)} / ${totalDistanceKm.toStringAsFixed(2)} km';
+
+  factory DriverKpiModel.fromJson(Map<String, dynamic> json) {
+    return DriverKpiModel(
+      driverId: json['driver_id']?.toString() ?? json['id']?.toString() ?? '',
+      loadEfficiencyRatio:
+          _asNullableDouble(json['load_efficiency_ratio']) ?? 0.0,
+      loadEfficiencyPercent:
+          _asNullableDouble(json['load_efficiency_percent']) ?? 0.0,
+      loadedDistanceKm: _asNullableDouble(json['loaded_distance_km']) ?? 0.0,
+      totalDistanceKm: _asNullableDouble(json['total_distance_km']) ?? 0.0,
+      activeOrderCount: (json['active_order_count'] as num?)?.toInt() ?? 0,
+      pendingConfirmationCount:
+          (json['pending_confirmation_count'] as num?)?.toInt() ?? 0,
+      completedOrderCount:
+          (json['completed_order_count'] as num?)?.toInt() ?? 0,
+      targetLoadEfficiencyRatio:
+          _asNullableDouble(json['target_load_efficiency_ratio']) ?? 0.75,
+      meetsLoadEfficiencyTarget: json['meets_load_efficiency_target'] == true,
+      measurementNote: json['measurement_note']?.toString() ?? '',
     );
   }
 }
@@ -84,7 +143,8 @@ class DriverLocation {
       lng: _asNullableDouble(json['lng']) ?? 0,
       heading: _asNullableDouble(json['heading']) ?? 0,
       updatedAt: json['updated_at']?.toString(),
-      isAvailable: json['is_available'] == null ? true : (json['is_available'] as bool),
+      isAvailable:
+          json['is_available'] == null ? true : (json['is_available'] as bool),
     );
   }
 }

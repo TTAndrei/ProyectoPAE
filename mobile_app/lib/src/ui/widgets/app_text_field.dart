@@ -38,8 +38,12 @@ class AppTextField extends StatelessWidget {
         hintText: hintText,
         filled: true,
         fillColor: fillColor ?? const Color(0xFFF0F0F0),
-        hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF8A8A8A)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        hintStyle: Theme.of(context)
+            .textTheme
+            .bodyMedium
+            ?.copyWith(color: const Color(0xFF8A8A8A)),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,

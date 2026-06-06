@@ -3,8 +3,15 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 
 from app.database import obtener_conexion
-from app.schemas import RepartidorRespuesta, ActualizarUbicacion, JornadaRespuesta, ActualizarDisponibilidad
+from app.schemas import (
+    ActualizarDisponibilidad,
+    ActualizarUbicacion,
+    DriverKpiResponse,
+    JornadaRespuesta,
+    RepartidorRespuesta,
+)
 from app.auth import obtener_usuario_actual, requerir_central, requerir_repartidor
+from app.services.driver_kpis import calcular_kpis_repartidor, listar_kpis_repartidores
 
 enrutador = APIRouter(prefix="/drivers", tags=["repartidores"])
 
@@ -22,6 +29,7 @@ def listar_repartidores(_: dict = Depends(requerir_central)):
                    c.id AS company_id, c.name AS company_name
         """)
         repartidores = []
+        kpis_por_repartidor = listar_kpis_repartidores(session)
         for record in result:
             data = record.data()
             company = None
@@ -39,9 +47,34 @@ def listar_repartidores(_: dict = Depends(requerir_central)):
                 "heading": data["heading"],
                 "location_updated_at": data["location_updated_at"],
                 "is_available": data["is_available"],
-                "company": company
+                "company": company,
+                **kpis_por_repartidor.get(data["id"], {}),
             })
         return repartidores
+
+
+@enrutador.get("/me/kpis", response_model=DriverKpiResponse)
+def obtener_mis_kpis(usuario_actual: dict = Depends(requerir_repartidor)):
+    with obtener_conexion() as session:
+        kpis = calcular_kpis_repartidor(session, usuario_actual["id"])
+        if not kpis:
+            raise HTTPException(status_code=404, detail="KPIs no encontrados")
+        return kpis
+
+
+@enrutador.get("/{id_repartidor}/kpis", response_model=DriverKpiResponse)
+def obtener_kpis_repartidor(
+    id_repartidor: str,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    if usuario_actual.get("role") != "central" and usuario_actual.get("id") != id_repartidor:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+
+    with obtener_conexion() as session:
+        kpis = calcular_kpis_repartidor(session, id_repartidor)
+        if not kpis:
+            raise HTTPException(status_code=404, detail="KPIs no encontrados")
+        return kpis
 
 
 @enrutador.get("/{id_repartidor}/location")

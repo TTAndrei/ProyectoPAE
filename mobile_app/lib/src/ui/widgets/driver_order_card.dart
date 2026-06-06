@@ -94,7 +94,8 @@ class DriverOrderCard extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                Icon(_orderTypeIcon(order.type), size: 18, color: AppTheme.tertiary),
+                Icon(_orderTypeIcon(order.type),
+                    size: 18, color: AppTheme.tertiary),
                 const SizedBox(width: 6),
                 Text('${_orderTypeLabel(order.type)} - ${order.id}'),
               ],

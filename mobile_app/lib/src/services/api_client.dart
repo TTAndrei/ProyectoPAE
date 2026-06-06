@@ -141,6 +141,20 @@ class ApiClient {
     return DriverLocation.fromJson(Map<String, dynamic>.from(decoded));
   }
 
+  Future<DriverKpiModel> getMyDriverKpis({required String token}) async {
+    final response = await _httpClient.get(
+      _buildUri('/drivers/me/kpis'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid driver KPI response format');
+    }
+
+    return DriverKpiModel.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
   Future<List<OrderModel>> getOrders({required String token}) async {
     final response = await _httpClient.get(
       _buildUri('/orders/'),
@@ -356,7 +370,8 @@ class ApiClient {
       body: jsonEncode({
         if (name != null) 'name': name,
         if (username != null) 'username': username,
-        if (password != null && password.trim().isNotEmpty) 'password': password,
+        if (password != null && password.trim().isNotEmpty)
+          'password': password,
       }),
     );
     _ensureSuccess(response);

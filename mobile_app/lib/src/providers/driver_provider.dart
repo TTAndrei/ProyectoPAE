@@ -59,6 +59,7 @@ class DriverProvider extends ChangeNotifier {
   String? _error;
 
   DriverLocation? _driverLocation;
+  DriverKpiModel? _kpis;
   DriverRoutePlan? _routePlan;
   List<OrderModel> _routeOrders = const [];
   final List<String> _events = <String>[];
@@ -79,6 +80,7 @@ class DriverProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   DriverLocation? get driverLocation => _driverLocation;
+  DriverKpiModel? get kpis => _kpis;
   DriverRoutePlan? get routePlan => _routePlan;
   List<OrderModel> get routeOrders => _routeOrders;
   List<String> get events => _events;
@@ -184,6 +186,7 @@ class DriverProvider extends ChangeNotifier {
         _routeService.getRoutePlan(token: _token, driverId: _user.id),
         _driverService.getDriverLocation(token: _token, driverId: _user.id),
         _driverService.getActiveJornada(token: _token),
+        _driverService.getMyDriverKpis(token: _token),
       ]);
 
       final incomingPlan = results[0] as DriverRoutePlan;
@@ -196,6 +199,7 @@ class DriverProvider extends ChangeNotifier {
       _routeOrders = newRoutePlan.orders;
       _driverLocation = results[1] as DriverLocation?;
       _activeJornada = results[2] as Map<String, dynamic>?;
+      _kpis = results[3] as DriverKpiModel;
 
       if (_driverLocation != null) {
         _isAvailable = _driverLocation!.isAvailable;

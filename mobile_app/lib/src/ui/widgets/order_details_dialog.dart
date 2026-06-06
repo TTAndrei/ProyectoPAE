@@ -48,7 +48,8 @@ class OrderDetailsDialog extends StatelessWidget {
               // Header Accent Banner
               Container(
                 color: isPickup ? AppTheme.secondary : AppTheme.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                 child: Row(
                   children: [
                     Icon(
@@ -62,7 +63,9 @@ class OrderDetailsDialog extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isPickup ? 'DETALLES DE RECOGIDA' : 'DETALLES DE ENTREGA',
+                            isPickup
+                                ? 'DETALLES DE RECOGIDA'
+                                : 'DETALLES DE ENTREGA',
                             style: const TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
@@ -112,8 +115,11 @@ class OrderDetailsDialog extends StatelessWidget {
                     // Client / Merchant name
                     _buildDetailRow(
                       icon: Icons.person_outline,
-                      label: isPickup ? 'Remitente / Proveedor' : 'Destinatario / Cliente',
-                      value: order.name ?? (isPickup ? 'Proveedor Express' : 'Cliente General'),
+                      label: isPickup
+                          ? 'Remitente / Proveedor'
+                          : 'Destinatario / Cliente',
+                      value: order.name ??
+                          (isPickup ? 'Proveedor Express' : 'Cliente General'),
                     ),
                     const SizedBox(height: 20),
 
@@ -151,7 +157,8 @@ class OrderDetailsDialog extends StatelessWidget {
                       _buildDetailRow(
                         icon: Icons.timer_outlined,
                         label: 'Desvío estimado',
-                        value: '+${order.estimatedExtraMinutes!.toStringAsFixed(1)} minutos extra',
+                        value:
+                            '+${order.estimatedExtraMinutes!.toStringAsFixed(1)} minutos extra',
                       ),
                       const SizedBox(height: 20),
                     ],
@@ -162,20 +169,22 @@ class OrderDetailsDialog extends StatelessWidget {
                       value: _formatDateTime(order.createdAt),
                     ),
                     const SizedBox(height: 20),
-                    
+
                     _buildDetailRow(
                       icon: Icons.edit_calendar_outlined,
                       label: 'Última actualización',
                       value: _formatDateTime(order.updatedAt),
                     ),
-                    
+
                     const SizedBox(height: 28),
 
                     // Action Buttons
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (order.status == 'assigned' && onAccept != null && onReject != null) ...[
+                        if (order.status == 'assigned' &&
+                            onAccept != null &&
+                            onReject != null) ...[
                           Row(
                             children: [
                               Expanded(
@@ -204,14 +213,17 @@ class OrderDetailsDialog extends StatelessWidget {
                             ],
                           ),
                         ] else ...[
-                          if (onComplete != null && order.status == 'in_progress') ...[
+                          if (onComplete != null &&
+                              order.status == 'in_progress') ...[
                             AppButton(
                               onPressed: () {
                                 Navigator.of(context).pop();
                                 onComplete!();
                               },
                               icon: Icons.check_circle_outline,
-                              text: isPickup ? 'Completar Recogida' : 'Completar Entrega',
+                              text: isPickup
+                                  ? 'Completar Recogida'
+                                  : 'Completar Entrega',
                             ),
                             const SizedBox(height: 12),
                           ],
@@ -226,7 +238,8 @@ class OrderDetailsDialog extends StatelessWidget {
                                     },
                                     icon: Icons.navigation_outlined,
                                     text: 'Navegar',
-                                    variant: (onComplete != null && order.status == 'in_progress')
+                                    variant: (onComplete != null &&
+                                            order.status == 'in_progress')
                                         ? AppButtonVariant.outlined
                                         : AppButtonVariant.primary,
                                   ),

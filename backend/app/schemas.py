@@ -105,6 +105,30 @@ class RepartidorRespuesta(BaseModel):
     location_updated_at: Optional[str] = None
     is_available: bool = True
     company: Optional[CompaniaRespuesta] = None
+    load_efficiency_ratio: float = 0.0
+    load_efficiency_percent: float = 0.0
+    loaded_distance_km: float = 0.0
+    total_distance_km: float = 0.0
+    active_order_count: int = 0
+    pending_confirmation_count: int = 0
+    completed_order_count: int = 0
+    target_load_efficiency_ratio: float = 0.75
+    meets_load_efficiency_target: bool = False
+    measurement_note: str = ""
+
+
+class DriverKpiResponse(BaseModel):
+    driver_id: str
+    load_efficiency_ratio: float = 0.0
+    load_efficiency_percent: float = 0.0
+    loaded_distance_km: float = 0.0
+    total_distance_km: float = 0.0
+    active_order_count: int = 0
+    pending_confirmation_count: int = 0
+    completed_order_count: int = 0
+    target_load_efficiency_ratio: float = 0.75
+    meets_load_efficiency_target: bool = False
+    measurement_note: str = ""
 
 class RutaRespuesta(BaseModel):
     id: str

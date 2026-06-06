@@ -25,18 +25,24 @@ class AppTheme {
       headlineLarge: manropeTextTheme.headlineLarge?.copyWith(color: neutral),
       headlineMedium: manropeTextTheme.headlineMedium?.copyWith(color: neutral),
       headlineSmall: manropeTextTheme.headlineSmall?.copyWith(color: neutral),
-      titleLarge: manropeTextTheme.titleLarge?.copyWith(color: neutral, fontWeight: FontWeight.bold),
-      titleMedium: manropeTextTheme.titleMedium?.copyWith(color: neutral, fontWeight: FontWeight.bold),
-      titleSmall: manropeTextTheme.titleSmall?.copyWith(color: neutral, fontWeight: FontWeight.bold),
-      
+      titleLarge: manropeTextTheme.titleLarge
+          ?.copyWith(color: neutral, fontWeight: FontWeight.bold),
+      titleMedium: manropeTextTheme.titleMedium
+          ?.copyWith(color: neutral, fontWeight: FontWeight.bold),
+      titleSmall: manropeTextTheme.titleSmall
+          ?.copyWith(color: neutral, fontWeight: FontWeight.bold),
+
       // Body & Labels -> Inter
       bodyLarge: interTextTheme.bodyLarge?.copyWith(color: neutral),
       bodyMedium: interTextTheme.bodyMedium?.copyWith(color: neutral),
       bodySmall: interTextTheme.bodySmall?.copyWith(color: neutral),
-      
-      labelLarge: interTextTheme.labelLarge?.copyWith(color: neutral, fontWeight: FontWeight.w600),
-      labelMedium: interTextTheme.labelMedium?.copyWith(color: neutral, fontWeight: FontWeight.w600),
-      labelSmall: interTextTheme.labelSmall?.copyWith(color: neutral, fontWeight: FontWeight.w600),
+
+      labelLarge: interTextTheme.labelLarge
+          ?.copyWith(color: neutral, fontWeight: FontWeight.w600),
+      labelMedium: interTextTheme.labelMedium
+          ?.copyWith(color: neutral, fontWeight: FontWeight.w600),
+      labelSmall: interTextTheme.labelSmall
+          ?.copyWith(color: neutral, fontWeight: FontWeight.w600),
     );
 
     return ThemeData(

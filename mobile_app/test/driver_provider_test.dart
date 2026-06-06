@@ -84,6 +84,23 @@ class _FakeDriverService extends DriverService {
       {required String token}) async {
     return null;
   }
+
+  @override
+  Future<DriverKpiModel> getMyDriverKpis({required String token}) async {
+    return const DriverKpiModel(
+      driverId: 'driver-1',
+      loadEfficiencyRatio: 0.5,
+      loadEfficiencyPercent: 50,
+      loadedDistanceKm: 1,
+      totalDistanceKm: 2,
+      activeOrderCount: 1,
+      pendingConfirmationCount: 1,
+      completedOrderCount: 0,
+      targetLoadEfficiencyRatio: 0.75,
+      meetsLoadEfficiencyTarget: false,
+      measurementNote: 'test',
+    );
+  }
 }
 
 class _FakeRouteService extends RouteService {
