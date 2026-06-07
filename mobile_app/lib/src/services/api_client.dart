@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/app_user.dart';
 import '../models/driver_model.dart';
 import '../models/order_model.dart';
+import '../models/analytics_models.dart';
 import 'api_exception.dart';
 
 class ApiClient {
@@ -463,6 +464,119 @@ class ApiClient {
       throw const ApiException('Invalid register response format');
     }
     return AppUser.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<List<CompanyModel>> getCompanies() async {
+    final response = await _httpClient.get(
+      _buildUri('/auth/companies'),
+      headers: _headers(),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! List) {
+      throw const ApiException('Invalid companies response format');
+    }
+    return decoded
+        .map((raw) => CompanyModel.fromJson(Map<String, dynamic>.from(raw as Map)))
+        .toList();
+  }
+
+  Future<CompanyModel> registerCompany({required String name}) async {
+    final response = await _httpClient.post(
+      _buildUri('/auth/companies'),
+      headers: _headers(),
+      body: jsonEncode({'name': name}),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid register company response format');
+    }
+    return CompanyModel.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<AppUser> registerUser({
+    required String username,
+    required String password,
+    required String name,
+    required String role,
+    String? companyId,
+  }) async {
+    final response = await _httpClient.post(
+      _buildUri('/auth/register'),
+      headers: _headers(),
+      body: jsonEncode({
+        'username': username,
+        'password': password,
+        'role': role,
+        'name': name,
+        if (companyId != null) 'company_id': companyId,
+      }),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid register response format');
+    }
+    return AppUser.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<FleetSummaryModel> getFleetSummary({required String token}) async {
+    final response = await _httpClient.get(
+      _buildUri('/analytics/fleet-summary'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid fleet summary response format');
+    }
+    return FleetSummaryModel.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<List<DriverPerformanceModel>> getDriverPerformance({required String token}) async {
+    final response = await _httpClient.get(
+      _buildUri('/analytics/driver-performance'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! List) {
+      throw const ApiException('Invalid driver performance response format');
+    }
+    return decoded
+        .map((raw) => DriverPerformanceModel.fromJson(Map<String, dynamic>.from(raw as Map)))
+        .toList();
+  }
+
+  Future<List<RouteHistoryModel>> getRoutesHistory({required String token}) async {
+    final response = await _httpClient.get(
+      _buildUri('/analytics/routes-history'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! List) {
+      throw const ApiException('Invalid routes history response format');
+    }
+    return decoded
+        .map((raw) => RouteHistoryModel.fromJson(Map<String, dynamic>.from(raw as Map)))
+        .toList();
+  }
+
+  Future<List<AuditLogModel>> getAuditLogs({required String token, required String orderId}) async {
+    final response = await _httpClient.get(
+      _buildUri('/analytics/audit-logs/${Uri.encodeComponent(orderId)}'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! List) {
+      throw const ApiException('Invalid audit logs response format');
+    }
+    return decoded
+        .map((raw) => AuditLogModel.fromJson(Map<String, dynamic>.from(raw as Map)))
+        .toList();
   }
 }
 

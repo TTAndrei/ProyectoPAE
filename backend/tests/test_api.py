@@ -249,7 +249,8 @@ async def test_obtener_ruta_repartidor(cliente, token_repartidor1):
 
 async def test_registrar_repartidor_con_compania(cliente, token_central):
     """La central debe poder registrar un nuevo conductor y este debe asociarse a su compañía."""
-    username_nuevo = "driver_test_new"
+    import uuid
+    username_nuevo = f"driver_test_new_{uuid.uuid4().hex[:8]}"
     respuesta = await cliente.post(
         "/auth/register",
         json={
@@ -266,3 +267,60 @@ async def test_registrar_repartidor_con_compania(cliente, token_central):
     assert datos["name"] == "Driver Test Registrado"
     assert datos["company"] is not None
     assert datos["company"]["id"] == "pae-logistics"
+
+
+# ── Registro de Compañías y Registro Público de Usuarios ───────────────────────
+
+async def test_registrar_y_listar_companias(cliente):
+    """Prueba que se pueda crear una compañía y luego listarla."""
+    import uuid
+    nombre_compania = f"Test Company {uuid.uuid4().hex[:6]}"
+    
+    # Crear compañía
+    res_crear = await cliente.post(
+        "/auth/companies",
+        json={"name": nombre_compania}
+    )
+    assert res_crear.status_code == 201
+    datos_crear = res_crear.json()
+    assert datos_crear["name"] == nombre_compania
+    assert "id" in datos_crear
+
+    # Listar compañías
+    res_listar = await cliente.get("/auth/companies")
+    assert res_listar.status_code == 200
+    companias = res_listar.json()
+    assert any(c["name"] == nombre_compania for c in companias)
+
+
+async def test_registrar_usuario_con_id_compania(cliente):
+    """Prueba que un usuario pueda registrarse asociándose a una compañía existente usando su ID."""
+    import uuid
+    nombre_compania = f"Company Test Public {uuid.uuid4().hex[:6]}"
+    username_nuevo = f"user_test_public_{uuid.uuid4().hex[:6]}"
+
+    # 1. Crear la compañía
+    res_comp = await cliente.post(
+        "/auth/companies",
+        json={"name": nombre_compania}
+    )
+    assert res_comp.status_code == 201
+    compania_id = res_comp.json()["id"]
+
+    # 2. Registrar el usuario sin JWT pero con company_id
+    res_reg = await cliente.post(
+        "/auth/register",
+        json={
+            "username": username_nuevo,
+            "password": "user123password",
+            "role": "central",
+            "name": "Usuario Test Público",
+            "company_id": compania_id
+        }
+    )
+    assert res_reg.status_code == 201
+    datos_reg = res_reg.json()
+    assert datos_reg["username"] == username_nuevo
+    assert datos_reg["company"] is not None
+    assert datos_reg["company"]["id"] == compania_id
+    assert datos_reg["company"]["name"] == nombre_compania

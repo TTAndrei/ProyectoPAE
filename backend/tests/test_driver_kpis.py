@@ -28,6 +28,7 @@ def test_ratio_eficiencia_carga_visible_para_central_y_repartidor(
     with obtener_conexion() as session:
         session.run(
             """
+            MATCH (c:Company {id: 'pae-logistics'})
             CREATE (u:User {
                 id: $driver_id,
                 username: $username,
@@ -39,6 +40,7 @@ def test_ratio_eficiencia_carga_visible_para_central_y_repartidor(
                 lng: 0.0,
                 created_at: datetime()
             })
+            CREATE (u)-[:BELONGS_TO]->(c)
             CREATE (u)-[:HAS_ROUTE]->(:Route {
                 id: randomUUID(),
                 order_ids: [$delivery_id, $pickup_id],
@@ -61,7 +63,7 @@ def test_ratio_eficiencia_carga_visible_para_central_y_repartidor(
         ):
             session.run(
                 """
-                MATCH (u:User {id: $driver_id})
+                MATCH (u:User {id: $driver_id}), (c:Company {id: 'pae-logistics'})
                 CREATE (o:Order {
                     id: $order_id,
                     type: $order_type,
@@ -73,6 +75,7 @@ def test_ratio_eficiencia_carga_visible_para_central_y_repartidor(
                     created_at: datetime(),
                     updated_at: datetime()
                 })
+                CREATE (o)-[:BELONGS_TO]->(c)
                 CREATE (u)-[:ASSIGNED_TO]->(o)
                 """,
                 {

@@ -68,4 +68,28 @@ class AuthService {
     }
     return updatedUser;
   }
+
+  Future<List<CompanyModel>> getCompanies() {
+    return _apiClient.getCompanies();
+  }
+
+  Future<CompanyModel> registerCompany({required String name}) {
+    return _apiClient.registerCompany(name: name);
+  }
+
+  Future<AppUser> registerUser({
+    required String username,
+    required String password,
+    required String name,
+    required String role,
+    String? companyId,
+  }) {
+    return _apiClient.registerUser(
+      username: username,
+      password: password,
+      name: name,
+      role: role,
+      companyId: companyId,
+    );
+  }
 }

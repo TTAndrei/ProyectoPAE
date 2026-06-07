@@ -28,6 +28,37 @@ def _plan_vacio() -> dict[str, Any]:
     }
 
 
+def registrar_evento_auditoria(
+    session,
+    order_id: str,
+    action: str,
+    driver_id: str | None = None,
+    details: str | None = None,
+) -> None:
+    event_id = str(uuid.uuid4())
+    session.run(
+        """
+        MATCH (o:Order {id: $oid})
+        CREATE (e:AuditEvent {
+            id: $eid,
+            order_id: $oid,
+            action: $action,
+            driver_id: $did,
+            timestamp: datetime(),
+            details: $details
+        })
+        CREATE (o)-[:LOGGED_EVENT]->(e)
+        """,
+        {
+            "oid": order_id,
+            "eid": event_id,
+            "action": action,
+            "did": driver_id,
+            "details": details,
+        },
+    )
+
+
 def obtener_posicion_repartidor(session, id_repartidor: str) -> dict | None:
     result = session.run(
         "MATCH (u:User {id: $id}) RETURN u.lat AS lat, u.lng AS lng",
@@ -57,7 +88,8 @@ def obtener_repartidores_activos_con_paradas_para_pedido(
 ) -> list[dict]:
     result = session.run(
         """
-        MATCH (u:User {role: 'repartidor'})
+        MATCH (order_comp:Order {id: $oid})-[:BELONGS_TO]->(c:Company)
+        MATCH (u:User {role: 'repartidor'})-[:BELONGS_TO]->(c)
         WHERE u.lat IS NOT NULL
           AND coalesce(u.is_available, true) = true
           AND NOT (u)-[:REJECTED_BY]->(:Order {id: $oid})
@@ -245,11 +277,12 @@ def _asignar_en_session(
     return pedido, plan, antiguos
 
 
-async def crear_pedido(cuerpo: CrearPedido) -> dict:
+async def crear_pedido(cuerpo: CrearPedido, company_id: str) -> dict:
     id_pedido = str(uuid.uuid4())
     with obtener_conexion() as session:
         session.run(
             """
+            MATCH (c:Company {id: $company_id})
             CREATE (o:Order {
                 id: $id,
                 type: $type,
@@ -261,6 +294,7 @@ async def crear_pedido(cuerpo: CrearPedido) -> dict:
                 created_at: datetime(),
                 updated_at: datetime()
             })
+            CREATE (o)-[:BELONGS_TO]->(c)
             """,
             {
                 "id": id_pedido,
@@ -269,8 +303,10 @@ async def crear_pedido(cuerpo: CrearPedido) -> dict:
                 "address": cuerpo.address,
                 "lat": cuerpo.lat,
                 "lng": cuerpo.lng,
+                "company_id": company_id,
             },
         )
+        registrar_evento_auditoria(session, id_pedido, 'create', details="Pedido creado en estado 'pending'")
 
         pedido_base = {"lat": cuerpo.lat, "lng": cuerpo.lng}
         candidatos = _calcular_candidatos(session, id_pedido, pedido_base)
@@ -290,6 +326,7 @@ async def crear_pedido(cuerpo: CrearPedido) -> dict:
                 minutos_extra,
                 candidate_ids,
             )
+            registrar_evento_auditoria(session, id_pedido, 'assign', driver_id=assigned_driver_id, details=f"Asignado automáticamente con {minutos_extra} min extra")
         else:
             session.run(
                 """
@@ -351,6 +388,7 @@ async def asignar_pedido(id_pedido: str, id_repartidor: str) -> dict:
             minutos_extra,
             candidate_ids,
         )
+        registrar_evento_auditoria(session, id_pedido, 'assign', driver_id=id_repartidor, details=f"Asignado manualmente con {minutos_extra} min extra")
 
     await gestor.enviar_a_repartidor(
         id_repartidor,
@@ -392,6 +430,9 @@ async def responder_pedido(id_pedido: str, id_repartidor: str, accepted: bool) -
                 """,
                 {"oid": id_pedido},
             )
+            registrar_evento_auditoria(session, id_pedido, 'accept', driver_id=id_repartidor, details="Pedido aceptado por el repartidor")
+            registrar_evento_auditoria(session, id_pedido, 'start_delivery', driver_id=id_repartidor, details="Pedido en curso")
+
             plan = plan_ruta_repartidor(session, id_repartidor)
             persistir_metricas_ruta(session, id_repartidor, plan)
             actualizado = _pedido_dict(session, id_pedido, id_repartidor)
@@ -407,6 +448,8 @@ async def responder_pedido(id_pedido: str, id_repartidor: str, accepted: bool) -
                 """,
                 {"uid": id_repartidor, "oid": id_pedido},
             )
+            registrar_evento_auditoria(session, id_pedido, 'reject', driver_id=id_repartidor, details="Pedido rechazado por el repartidor")
+
             persistir_metricas_ruta(session, id_repartidor, plan_ruta_repartidor(session, id_repartidor))
 
             candidatos = _calcular_candidatos(session, id_pedido, pedido)
@@ -422,6 +465,7 @@ async def responder_pedido(id_pedido: str, id_repartidor: str, accepted: bool) -
                     minutos_extra,
                     candidate_ids,
                 )
+                registrar_evento_auditoria(session, id_pedido, 'assign', driver_id=nuevo_driver_id, details=f"Reasignado automáticamente tras rechazo, con {minutos_extra} min extra")
                 nuevo_status = "assigned"
             else:
                 session.run(
@@ -435,6 +479,7 @@ async def responder_pedido(id_pedido: str, id_repartidor: str, accepted: bool) -
                     """,
                     {"oid": id_pedido},
                 )
+                registrar_evento_auditoria(session, id_pedido, 'revert_to_pending', details="Sin candidatos disponibles tras rechazo. Pedido vuelve a pendiente.")
                 actualizado = _pedido_dict(session, id_pedido, None)
                 actualizado["backhauling_candidates"] = []
                 plan = _plan_vacio()
@@ -502,6 +547,19 @@ def actualizar_estado_pedido(id_pedido: str, status: str, usuario_actual: dict) 
             "MATCH (o:Order {id: $oid}) SET o.status = $status, o.updated_at = datetime()",
             {"oid": id_pedido, "status": status},
         )
+
+        if status == "completed" and driver_id:
+            session.run(
+                """
+                MATCH (u:User {id: $uid})-[:HAS_ROUTE]->(r:Route {status: 'active'})
+                SET r.completed_order_ids = coalesce(r.completed_order_ids, []) + [$oid]
+                """,
+                {"uid": driver_id, "oid": id_pedido}
+            )
+
+        action_name = "start_delivery" if status == "in_progress" else "complete"
+        details_text = "Pedido marcado en curso" if status == "in_progress" else "Pedido completado con éxito"
+        registrar_evento_auditoria(session, id_pedido, action_name, driver_id, details_text)
 
         plan = _plan_vacio()
         if driver_id:

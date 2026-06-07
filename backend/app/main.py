@@ -14,6 +14,7 @@ from app.routers.auth import enrutador as enrutador_auth
 from app.routers.drivers import enrutador as enrutador_repartidores
 from app.routers.orders import enrutador as enrutador_pedidos
 from app.routers.ws import enrutador as enrutador_ws
+from app.routers.analytics import enrutador as enrutador_analiticas
 
 
 def crear_aplicacion() -> FastAPI:
@@ -62,6 +63,7 @@ def crear_aplicacion() -> FastAPI:
     aplicacion.include_router(enrutador_repartidores)
     aplicacion.include_router(enrutador_pedidos)
     aplicacion.include_router(enrutador_ws)
+    aplicacion.include_router(enrutador_analiticas)
 
     @aplicacion.get("/health", tags=["sistema"])
     def verificar_estado():

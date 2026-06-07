@@ -97,8 +97,14 @@ def calcular_kpis_repartidor(session, id_repartidor: str) -> dict[str, Any] | No
     }
 
 
-def listar_kpis_repartidores(session) -> dict[str, dict[str, Any]]:
-    result = session.run("MATCH (u:User {role: 'repartidor'}) RETURN u.id AS id")
+def listar_kpis_repartidores(session, company_id: str) -> dict[str, dict[str, Any]]:
+    result = session.run(
+        """
+        MATCH (u:User {role: 'repartidor'})-[:BELONGS_TO]->(:Company {id: $cid})
+        RETURN u.id AS id
+        """,
+        {"cid": company_id},
+    )
     kpis = {}
     for record in result:
         driver_kpis = calcular_kpis_repartidor(session, record["id"])

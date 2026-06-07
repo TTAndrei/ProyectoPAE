@@ -1,5 +1,6 @@
 import '../models/app_user.dart';
 import '../models/driver_model.dart';
+import '../models/analytics_models.dart';
 import 'api_client.dart';
 
 /// Wraps all driver-related API calls.
@@ -90,5 +91,25 @@ class DriverService {
       password: password,
       name: name,
     );
+  }
+
+  /// Fetches fleet summary statistics.
+  Future<FleetSummaryModel> fetchFleetSummary({required String token}) {
+    return _apiClient.getFleetSummary(token: token);
+  }
+
+  /// Fetches comparative driver performance KPIs.
+  Future<List<DriverPerformanceModel>> fetchDriverPerformance({required String token}) {
+    return _apiClient.getDriverPerformance(token: token);
+  }
+
+  /// Fetches historical routes list.
+  Future<List<RouteHistoryModel>> fetchRoutesHistory({required String token}) {
+    return _apiClient.getRoutesHistory(token: token);
+  }
+
+  /// Fetches audit logs for a specific order.
+  Future<List<AuditLogModel>> fetchAuditLogs({required String token, required String orderId}) {
+    return _apiClient.getAuditLogs(token: token, orderId: orderId);
   }
 }

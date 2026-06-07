@@ -13,11 +13,15 @@ class CompaniaRespuesta(BaseModel):
     name: str
 
 
+class CrearCompania(BaseModel):
+    name: str
+
 class CrearUsuario(BaseModel):
     username: str
     password: str
     role: str
     name: str
+    company_id: Optional[str] = None
 
     @field_validator("role")
     @classmethod
@@ -25,6 +29,7 @@ class CrearUsuario(BaseModel):
         if valor not in ("central", "repartidor"):
             raise ValueError("El rol debe ser 'central' o 'repartidor'")
         return valor
+
 
 
 class UsuarioRespuesta(BaseModel):
@@ -164,3 +169,49 @@ class ActualizarPerfil(BaseModel):
 
 class ActualizarDisponibilidad(BaseModel):
     is_available: bool
+
+
+class LogAuditoriaRespuesta(BaseModel):
+    id: str
+    order_id: str
+    action: str
+    driver_id: Optional[str] = None
+    timestamp: str
+    details: Optional[str] = None
+
+
+class RendimientoRepartidorRespuesta(BaseModel):
+    driver_id: str
+    name: str
+    load_efficiency_ratio: float
+    load_efficiency_percent: float
+    loaded_distance_km: float
+    total_distance_km: float
+    active_order_count: int
+    pending_confirmation_count: int
+    completed_order_count: int
+    meets_load_efficiency_target: bool
+
+
+class AnaliticasFlotaRespuesta(BaseModel):
+    total_distance_km: float
+    loaded_distance_km: float
+    average_load_efficiency_percent: float
+    total_active_orders: int
+    total_pending_confirmations: int
+    total_completed_orders: int
+
+
+class RutaHistoricaRespuesta(BaseModel):
+    id: str
+    driver_id: str
+    order_ids: list[str] = []
+    completed_order_ids: list[str] = []
+    status: str
+    created_at: str
+    updated_at: str
+    total_minutes: float = 0.0
+    total_distance_km: float = 0.0
+    route_geometry: list[dict[str, float]] = []
+    leg_minutes: list[float] = []
+

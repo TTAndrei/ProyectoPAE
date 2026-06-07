@@ -3,12 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../../../providers/central_provider.dart';
 import '../../../providers/order_provider.dart';
+import '../../../state/session_controller.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_theme.dart';
 import 'central_dashboard_screen.dart';
 import 'central_map_screen.dart';
 import 'central_orders_screen.dart';
 import 'central_drivers_screen.dart';
+import 'central_analytics_screen.dart';
 
 class CentralPage extends StatefulWidget {
   const CentralPage({super.key});
@@ -149,7 +151,9 @@ class _CentralPageState extends State<CentralPage> {
   Widget build(BuildContext context) {
     final orderProv = context.watch<OrderProvider>();
     final centralProv = context.watch<CentralProvider>();
+    final session = context.watch<SessionController>();
 
+    final companyName = session.user?.company?.name ?? 'PAE Logistics';
     final drivers = centralProv.drivers;
     final events = orderProv.events;
     final isLoading = orderProv.isLoading || centralProv.isLoading;
@@ -245,6 +249,11 @@ class _CentralPageState extends State<CentralPage> {
                   tabId: 'alerts',
                   badgeText: events.isNotEmpty ? '${events.length}' : null,
                 ),
+                _buildSidebarItem(
+                  icon: Icons.analytics_rounded,
+                  label: 'Analíticas',
+                  tabId: 'analytics',
+                ),
 
                 const Spacer(),
                 const Divider(color: Colors.white24, height: 1),
@@ -254,7 +263,7 @@ class _CentralPageState extends State<CentralPage> {
                   padding: const EdgeInsets.all(16),
                   child: _isCollapsed
                       ? Tooltip(
-                          message: 'Compañía: ${drivers.isNotEmpty && drivers.first.company != null ? drivers.first.company!.name : "PAE Logistics"}',
+                          message: 'Compañía: $companyName',
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -292,7 +301,7 @@ class _CentralPageState extends State<CentralPage> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Compañía: ${drivers.isNotEmpty && drivers.first.company != null ? drivers.first.company!.name : "PAE Logistics"}',
+                                  'Compañía: $companyName',
                                   style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 12,
@@ -482,6 +491,8 @@ class _CentralPageState extends State<CentralPage> {
         );
       case 'alerts':
         return CentralOrdersScreen(onCreateOrder: _openCreateOrderDialog);
+      case 'analytics':
+        return const CentralAnalyticsScreen();
       default:
         return const SizedBox();
     }

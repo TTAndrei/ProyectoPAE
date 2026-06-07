@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth import obtener_usuario_actual, requerir_central
+from app.auth import obtener_usuario_actual, requerir_central, obtener_id_compania
 from app.database import obtener_conexion
 from app.schemas import (
     ActualizarEstadoPedido,
@@ -23,22 +23,24 @@ enrutador = APIRouter(prefix="/orders", tags=["pedidos"])
 
 @enrutador.get("/", response_model=list[PedidoRespuesta])
 def listar_pedidos(usuario_actual: dict = Depends(obtener_usuario_actual)):
+    company_id = obtener_id_compania(usuario_actual)
     with obtener_conexion() as session:
         if usuario_actual["role"] == "central":
             result = session.run(
                 """
-                MATCH (o:Order)
+                MATCH (o:Order)-[:BELONGS_TO]->(c:Company {id: $company_id})
                 OPTIONAL MATCH (u:User)-[:ASSIGNED_TO]->(o)
                 WITH o, collect(u.id) AS assigned_ids
                 RETURN o {.*, created_at: toString(o.created_at), updated_at: toString(o.updated_at)} AS o,
                        head(assigned_ids) AS assigned_driver_id
                 ORDER BY o.created_at DESC
-                """
+                """,
+                {"company_id": company_id},
             )
         else:
             result = session.run(
                 """
-                MATCH (o:Order)
+                MATCH (o:Order)-[:BELONGS_TO]->(c:Company {id: $company_id})
                 OPTIONAL MATCH (asignado_a_mi:User {id: $uid})-[:ASSIGNED_TO]->(o)
                 WHERE asignado_a_mi IS NOT NULL OR o.status = 'pending'
                 WITH DISTINCT o
@@ -48,7 +50,7 @@ def listar_pedidos(usuario_actual: dict = Depends(obtener_usuario_actual)):
                        head(assigned_ids) AS assigned_driver_id
                 ORDER BY o.created_at DESC
                 """,
-                {"uid": usuario_actual["id"]},
+                {"uid": usuario_actual["id"], "company_id": company_id},
             )
 
         pedidos = []
@@ -60,8 +62,9 @@ def listar_pedidos(usuario_actual: dict = Depends(obtener_usuario_actual)):
 
 
 @enrutador.post("/", response_model=PedidoRespuesta, status_code=status.HTTP_201_CREATED)
-async def crear_pedido(cuerpo: CrearPedido, _: dict = Depends(requerir_central)):
-    return await ejecutar_crear_pedido(cuerpo)
+async def crear_pedido(cuerpo: CrearPedido, usuario_actual: dict = Depends(requerir_central)):
+    company_id = obtener_id_compania(usuario_actual)
+    return await ejecutar_crear_pedido(cuerpo, company_id)
 
 
 @enrutador.post("/{id_pedido}/assign")

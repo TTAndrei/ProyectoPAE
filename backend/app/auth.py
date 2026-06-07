@@ -50,3 +50,10 @@ def requerir_repartidor(usuario: dict = Depends(obtener_usuario_actual)) -> dict
             detail="Acceso denegado: se requiere rol repartidor",
         )
     return usuario
+
+
+def obtener_id_compania(usuario: dict) -> str:
+    company = usuario.get("company")
+    if isinstance(company, dict):
+        return company.get("id") or "pae-logistics"
+    return "pae-logistics"

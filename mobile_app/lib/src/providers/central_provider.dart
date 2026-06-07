@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../models/driver_model.dart';
+import '../models/analytics_models.dart';
 import '../services/driver_service.dart';
 import '../services/ws_service.dart';
 
@@ -28,18 +29,28 @@ class CentralProvider extends ChangeNotifier {
   final WsService _wsService = WsService();
 
   Timer? _refreshTimer;
+  bool _disposed = false;
   bool _isLoading = false;
   String? _error;
   List<DriverModel> _drivers = const [];
+  FleetSummaryModel? _fleetSummary;
+  List<DriverPerformanceModel> _driverPerformance = const [];
+  List<RouteHistoryModel> _routesHistory = const [];
+  final Map<String, List<AuditLogModel>> _orderAudits = {};
 
   // ── Getters ──────────────────────────────────────────────────────
   bool get isLoading => _isLoading;
   String? get error => _error;
   List<DriverModel> get drivers => _drivers;
+  FleetSummaryModel? get fleetSummary => _fleetSummary;
+  List<DriverPerformanceModel> get driverPerformance => _driverPerformance;
+  List<RouteHistoryModel> get routesHistory => _routesHistory;
+  Map<String, List<AuditLogModel>> get orderAudits => _orderAudits;
 
   // ── Lifecycle ────────────────────────────────────────────────────
   @override
   void dispose() {
+    _disposed = true;
     _refreshTimer?.cancel();
     _wsService.disconnect();
     super.dispose();
@@ -67,6 +78,7 @@ class CentralProvider extends ChangeNotifier {
   Future<void> loadDrivers() => _loadDrivers(showLoader: true);
 
   Future<void> _loadDrivers({bool showLoader = true}) async {
+    if (_disposed) return;
     if (showLoader) {
       _isLoading = true;
       notifyListeners();
@@ -77,9 +89,38 @@ class CentralProvider extends ChangeNotifier {
       _error = null;
     } catch (e) {
       _error = e.toString();
-    } finally {
+    }
+
+    // Analytics fetched separately so a failure doesn't block driver data
+    try {
+      final analytics = await Future.wait([
+        _driverService.fetchFleetSummary(token: _token),
+        _driverService.fetchDriverPerformance(token: _token),
+        _driverService.fetchRoutesHistory(token: _token),
+      ]);
+      _fleetSummary = analytics[0] as FleetSummaryModel;
+      _driverPerformance = analytics[1] as List<DriverPerformanceModel>;
+      _routesHistory = analytics[2] as List<RouteHistoryModel>;
+    } catch (_) {
+      // Analytics failure is non-critical; keep last known values
+    }
+
+    if (!_disposed) {
       if (showLoader) _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<List<AuditLogModel>> loadOrderAudit(String orderId) async {
+    try {
+      final logs = await _driverService.fetchAuditLogs(token: _token, orderId: orderId);
+      _orderAudits[orderId] = logs;
+      if (!_disposed) notifyListeners();
+      return logs;
+    } catch (e) {
+      _error = e.toString();
+      if (!_disposed) notifyListeners();
+      rethrow;
     }
   }
 

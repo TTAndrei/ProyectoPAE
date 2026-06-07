@@ -10,26 +10,26 @@ from app.schemas import (
     JornadaRespuesta,
     RepartidorRespuesta,
 )
-from app.auth import obtener_usuario_actual, requerir_central, requerir_repartidor
+from app.auth import obtener_usuario_actual, requerir_central, requerir_repartidor, obtener_id_compania
 from app.services.driver_kpis import calcular_kpis_repartidor, listar_kpis_repartidores
 
 enrutador = APIRouter(prefix="/drivers", tags=["repartidores"])
 
 
 @enrutador.get("/", response_model=list[RepartidorRespuesta])
-def listar_repartidores(_: dict = Depends(requerir_central)):
+def listar_repartidores(usuario_actual: dict = Depends(requerir_central)):
+    company_id = obtener_id_compania(usuario_actual)
     with obtener_conexion() as session:
         result = session.run("""
-            MATCH (u:User {role: 'repartidor'})
-            OPTIONAL MATCH (u)-[:BELONGS_TO]->(c:Company)
+            MATCH (u:User {role: 'repartidor'})-[:BELONGS_TO]->(c:Company {id: $company_id})
             RETURN u.id AS id, u.username AS username, u.name AS name,
                    u.lat AS lat, u.lng AS lng, u.heading AS heading,
                    toString(u.location_updated_at) AS location_updated_at,
                    coalesce(u.is_available, true) AS is_available,
                    c.id AS company_id, c.name AS company_name
-        """)
+        """, {"company_id": company_id})
         repartidores = []
-        kpis_por_repartidor = listar_kpis_repartidores(session)
+        kpis_por_repartidor = listar_kpis_repartidores(session, company_id)
         for record in result:
             data = record.data()
             company = None
@@ -155,6 +155,23 @@ def cerrar_jornada(usuario_actual: dict = Depends(requerir_repartidor)):
             """
             MATCH (u:User {id: $uid})-[:HAS_JORNADA]->(j:Jornada {status: 'active'})
             SET j.status = 'closed', j.end_time = datetime(), u.is_available = false
+            WITH u, j
+            OPTIONAL MATCH (u)-[hr:HAS_ROUTE]->(r:Route {status: 'active'})
+            CALL (hr, r, j) {
+                WITH hr, r, j
+                WHERE r IS NOT NULL
+                DELETE hr
+                SET r.status = 'completed', r.updated_at = datetime()
+                CREATE (j)-[:HAD_ROUTE]->(r)
+            }
+            WITH u, j
+            CREATE (u)-[:HAS_ROUTE]->(:Route {
+                id: randomUUID(),
+                order_ids: [],
+                status: 'active',
+                created_at: datetime(),
+                updated_at: datetime()
+            })
             RETURN j {.*, start_time: toString(j.start_time), end_time: toString(j.end_time)} AS j
             """,
             {"uid": usuario_actual["id"]},

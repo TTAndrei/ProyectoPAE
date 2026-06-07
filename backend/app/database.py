@@ -34,7 +34,10 @@ def inicializar_bd():
         session.run("CREATE CONSTRAINT route_id_unique IF NOT EXISTS FOR (r:Route) REQUIRE r.id IS UNIQUE")
         session.run("CREATE CONSTRAINT jornada_id_unique IF NOT EXISTS FOR (j:Jornada) REQUIRE j.id IS UNIQUE")
         session.run("CREATE CONSTRAINT company_id_unique IF NOT EXISTS FOR (c:Company) REQUIRE c.id IS UNIQUE")
+        session.run("CREATE CONSTRAINT auditevent_id_unique IF NOT EXISTS FOR (ae:AuditEvent) REQUIRE ae.id IS UNIQUE")
         session.run("CREATE INDEX order_status_idx IF NOT EXISTS FOR (o:Order) ON (o.status)")
+        session.run("CREATE INDEX auditevent_order_idx IF NOT EXISTS FOR (ae:AuditEvent) ON (ae.order_id)")
+        session.run("CREATE INDEX route_status_idx IF NOT EXISTS FOR (r:Route) ON (r.status)")
 
         _sembrar_datos(session)
 
@@ -87,6 +90,7 @@ def _sembrar_datos(session):
     ]
     for p in pedidos:
         session.run("""
+            MATCH (c:Company {id: 'pae-logistics'})
             CREATE (o:Order {
                 id: $id, 
                 type: $type, 
@@ -98,6 +102,7 @@ def _sembrar_datos(session):
                 created_at: datetime(),
                 updated_at: datetime()
             })
+            CREATE (o)-[:BELONGS_TO]->(c)
             WITH o
             WHERE $driver_id IS NOT NULL
             MATCH (u:User {id: $driver_id})

@@ -13,7 +13,7 @@ from jose import jwt
 
 from app.config import CLAVE_SECRETA, ALGORITMO
 from app.database import obtener_conexion
-from app.schemas import SolicitudLogin, RespuestaToken, UsuarioRespuesta, CrearUsuario, ActualizarPerfil, CompaniaRespuesta
+from app.schemas import SolicitudLogin, RespuestaToken, UsuarioRespuesta, CrearUsuario, ActualizarPerfil, CompaniaRespuesta, CrearCompania
 from app.auth import contexto_contrasena, crear_token_acceso, obtener_usuario_actual
 
 # Enrutador de autenticación con prefijo /auth
@@ -21,17 +21,56 @@ enrutador = APIRouter(prefix="/auth", tags=["autenticación"])
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-def obtener_compania_creador(credenciales = Depends(bearer_scheme)) -> str:
+def obtener_compania_creador(credenciales = Depends(bearer_scheme)) -> str | None:
+    """Extrae el company_id del JWT si existe. Devuelve None si no hay token."""
     if not credenciales:
-        return "pae-logistics"
+        return None
     try:
         payload = jwt.decode(credenciales.credentials, CLAVE_SECRETA, algorithms=[ALGORITMO])
         company = payload.get("company")
         if company and isinstance(company, dict):
-            return company.get("id") or "pae-logistics"
+            return company.get("id") or None
     except Exception:
         pass
-    return "pae-logistics"
+    return None
+
+
+@enrutador.post("/companies", response_model=CompaniaRespuesta, status_code=status.HTTP_201_CREATED)
+def registrar_compania(cuerpo: CrearCompania):
+    """Registra una nueva compañía en el sistema."""
+    company_id = str(uuid.uuid4())
+    with obtener_conexion() as session:
+        # Verificar si ya existe una compañía con ese nombre
+        existe = session.run(
+            "MATCH (c:Company) WHERE toLower(c.name) = toLower($name) RETURN c",
+            {"name": cuerpo.name},
+        ).single()
+        if existe:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya existe una compañía con ese nombre",
+            )
+
+        result = session.run(
+            """
+            CREATE (c:Company {
+                id: $id,
+                name: $name,
+                created_at: datetime()
+            })
+            RETURN c.id AS id, c.name AS name
+            """,
+            {"id": company_id, "name": cuerpo.name},
+        ).single()
+        return CompaniaRespuesta(id=result["id"], name=result["name"])
+
+
+@enrutador.get("/companies", response_model=list[CompaniaRespuesta])
+def listar_companias():
+    """Lista todas las compañías registradas (público, para el formulario de registro)."""
+    with obtener_conexion() as session:
+        result = session.run("MATCH (c:Company) RETURN c.id AS id, c.name AS name ORDER BY c.name")
+        return [CompaniaRespuesta(id=r["id"], name=r["name"]) for r in result]
 
 
 @enrutador.post("/login", response_model=RespuestaToken)
@@ -77,10 +116,13 @@ def iniciar_sesion(cuerpo: SolicitudLogin):
 
 
 @enrutador.post("/register", response_model=UsuarioRespuesta, status_code=status.HTTP_201_CREATED)
-def registrar_usuario(cuerpo: CrearUsuario, compania_id: str = Depends(obtener_compania_creador)):
-    """Registra un nuevo usuario en el sistema con un ID de tipo UUID.
+def registrar_usuario(cuerpo: CrearUsuario, compania_id_jwt: str | None = Depends(obtener_compania_creador)):
+    """Registra un nuevo usuario en el sistema.
     
-    Si el rol es 'repartidor', se le crea automáticamente una ruta activa vacía.
+    La compañía se determina por prioridad:
+    1. Si hay un JWT válido, se usa la compañía del token (un central registra repartidores en su empresa).
+    2. Si no hay JWT y se proporciona company_name, se busca la compañía por nombre.
+    3. Si no se encuentra, se devuelve un error.
     """
     id_usuario = str(uuid.uuid4())
     password_hash = contexto_contrasena.hash(cuerpo.password)
@@ -96,6 +138,24 @@ def registrar_usuario(cuerpo: CrearUsuario, compania_id: str = Depends(obtener_c
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="El nombre de usuario ya está registrado",
             )
+
+        # Determinar la compañía
+        if compania_id_jwt:
+            compania_id = compania_id_jwt
+        elif cuerpo.company_id:
+            # Buscar la compañía por ID
+            company_record = session.run(
+                "MATCH (c:Company {id: $id}) RETURN c.id AS id",
+                {"id": cuerpo.company_id},
+            ).single()
+            if not company_record:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No se encontró la compañía con ID '{cuerpo.company_id}'. Regístrala primero.",
+                )
+            compania_id = company_record["id"]
+        else:
+            compania_id = "pae-logistics"
 
         # Crear el usuario
         result = session.run("""
