@@ -23,6 +23,103 @@ class _CentralPageState extends State<CentralPage> {
   String _activeTab = 'dashboard';
   bool _isCollapsed = false;
 
+  void _showEditProfileDialog(BuildContext context) {
+    final session = context.read<SessionController>();
+    final user = session.user;
+    if (user == null) return;
+
+    final nameController = TextEditingController(text: user.name);
+    final usernameController = TextEditingController(text: user.username);
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Editar Perfil'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Ingresa tu nombre';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: usernameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre de usuario',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Ingresa tu usuario';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Nueva Contraseña (opcional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+
+                final success = await session.updateProfile(
+                  name: nameController.text.trim(),
+                  username: usernameController.text.trim(),
+                  password: passwordController.text.isNotEmpty
+                      ? passwordController.text
+                      : null,
+                );
+
+                if (!dialogContext.mounted) return;
+                Navigator.of(dialogContext).pop();
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? 'Perfil actualizado correctamente'
+                          : 'Error al actualizar',
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _openCreateOrderDialog() async {
     final orderProv = context.read<OrderProvider>();
 
@@ -314,6 +411,42 @@ class _CentralPageState extends State<CentralPage> {
                           ),
                         ),
                 ),
+                if (_isCollapsed) ...[
+                  IconButton(
+                    icon: const Icon(Icons.manage_accounts, color: Colors.white70, size: 20),
+                    tooltip: 'Editar Perfil',
+                    onPressed: () => _showEditProfileDialog(context),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                    tooltip: 'Cerrar sesión',
+                    onPressed: () => session.logout(),
+                  ),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.manage_accounts, color: Colors.white70, size: 20),
+                          title: const Text('Editar Perfil', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                          onTap: () => _showEditProfileDialog(context),
+                        ),
+                        ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                          title: const Text('Cerrar sesión', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                          onTap: () => session.logout(),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
