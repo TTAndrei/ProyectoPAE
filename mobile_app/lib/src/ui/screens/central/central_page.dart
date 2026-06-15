@@ -154,6 +154,19 @@ class _CentralPageState extends State<CentralPage> {
         address: draft.address,
         lat: selectedCandidate.lat,
         lng: selectedCandidate.lng,
+        incoterm: draft.incoterm,
+        origen: draft.origen,
+        destino: draft.destino,
+        tipoBulto: draft.tipoBulto,
+        dimensiones: draft.dimensiones,
+        peso: draft.peso,
+        esAdr: draft.esAdr,
+        adrTipo: draft.adrTipo,
+        adrCodigoUn: draft.adrCodigoUn,
+        clienteNombre: draft.clienteNombre,
+        clienteContacto: draft.clienteContacto,
+        destinatarioNombre: draft.destinatarioNombre,
+        destinatarioContacto: draft.destinatarioContacto,
       );
 
       if (!mounted) return;
@@ -645,14 +658,63 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _addressController = TextEditingController();
+  final _origenController = TextEditingController();
+  final _destinoController = TextEditingController();
+  final _dimensionesController = TextEditingController();
+  final _pesoController = TextEditingController();
+  final _adrTipoController = TextEditingController();
+  final _adrCodigoUnController = TextEditingController();
+  final _clienteNombreController = TextEditingController();
+  final _clienteContactoController = TextEditingController();
+  final _destinatarioNombreController = TextEditingController();
+  final _destinatarioContactoController = TextEditingController();
 
   String _selectedType = 'pickup';
+  String _selectedIncoterm = 'EXW';
+  String? _selectedTipoBulto;
+  bool _esAdr = false;
 
   @override
   void dispose() {
     _nameController.dispose();
     _addressController.dispose();
+    _origenController.dispose();
+    _destinoController.dispose();
+    _dimensionesController.dispose();
+    _pesoController.dispose();
+    _adrTipoController.dispose();
+    _adrCodigoUnController.dispose();
+    _clienteNombreController.dispose();
+    _clienteContactoController.dispose();
+    _destinatarioNombreController.dispose();
+    _destinatarioContactoController.dispose();
     super.dispose();
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2F2E2E),
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 12, color: Color(0xFFEAE7E7)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -661,66 +723,283 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
       title: const Text('Crear pedido'),
       content: Form(
         key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _selectedType,
-                decoration: const InputDecoration(
-                  labelText: 'Tipo',
-                  border: OutlineInputBorder(),
+        child: SizedBox(
+          width: 580,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildSectionHeader('Datos Generales', Icons.info_outline),
+                DropdownButtonFormField<String>(
+                  value: _selectedType,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipo de pedido',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'pickup', child: Text('Pickup (Recogida)')),
+                    DropdownMenuItem(value: 'delivery', child: Text('Delivery (Entrega)')),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      _selectedType = value;
+                    });
+                  },
                 ),
-                items: const [
-                  DropdownMenuItem(value: 'pickup', child: Text('Pickup')),
-                  DropdownMenuItem(value: 'delivery', child: Text('Delivery')),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() {
-                    _selectedType = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre empresa / cliente (opcional)',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre identificador de parada (opcional)',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Dirección',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _addressController,
+                  decoration: const InputDecoration(
+                    labelText: 'Dirección de parada',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Ingresa una dirección';
+                    }
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Ingresa una dirección';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Icon(Icons.place_outlined, size: 17),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Las coordenadas se calculan automáticamente desde la dirección.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.black.withValues(alpha: 0.7),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.place_outlined, size: 15, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Las coordenadas GPS se calcularán automáticamente.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.black.withValues(alpha: 0.6),
+                        ),
                       ),
                     ),
+                  ],
+                ),
+
+                _buildSectionHeader('Datos de Envío', Icons.inventory_2_outlined),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedIncoterm,
+                        decoration: const InputDecoration(
+                          labelText: 'Incoterm',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'EXW', child: Text('EXW')),
+                          DropdownMenuItem(value: 'FOB', child: Text('FOB')),
+                          DropdownMenuItem(value: 'CFR', child: Text('CFR')),
+                          DropdownMenuItem(value: 'CIF', child: Text('CIF')),
+                          DropdownMenuItem(value: 'DDP', child: Text('DDP')),
+                          DropdownMenuItem(value: 'DAP', child: Text('DAP')),
+                          DropdownMenuItem(value: 'FCA', child: Text('FCA')),
+                          DropdownMenuItem(value: 'CPT', child: Text('CPT')),
+                          DropdownMenuItem(value: 'CIP', child: Text('CIP')),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() {
+                            _selectedIncoterm = value;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedTipoBulto,
+                        decoration: const InputDecoration(
+                          labelText: 'Tipo de bulto',
+                          border: OutlineInputBorder(),
+                          helperText: 'Opcional',
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: null, child: Text('Ninguno')),
+                          DropdownMenuItem(value: 'caja', child: Text('Caja')),
+                          DropdownMenuItem(value: 'pallet', child: Text('Pallet')),
+                          DropdownMenuItem(value: 'cajon', child: Text('Cajón')),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedTipoBulto = value;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _origenController,
+                        decoration: const InputDecoration(
+                          labelText: 'Origen del envío',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _destinoController,
+                        decoration: const InputDecoration(
+                          labelText: 'Destino del envío',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _dimensionesController,
+                        decoration: const InputDecoration(
+                          labelText: 'Dimensiones (ej: 120x80x100 cm)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _pesoController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Peso total (kg)',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value != null && value.trim().isNotEmpty) {
+                            if (double.tryParse(value.trim()) == null) {
+                              return 'Número inválido';
+                            }
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+
+                _buildSectionHeader('Mercancía Peligrosa (ADR)', Icons.warning_amber_rounded),
+                SwitchListTile(
+                  title: const Text('¿Contiene mercancía peligrosa (ADR)?'),
+                  activeColor: AppTheme.primary,
+                  contentPadding: EdgeInsets.zero,
+                  value: _esAdr,
+                  onChanged: (val) {
+                    setState(() {
+                      _esAdr = val;
+                    });
+                  },
+                ),
+                if (_esAdr) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _adrTipoController,
+                          decoration: const InputDecoration(
+                            labelText: 'Tipo / Clase ADR',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            if (_esAdr && (value == null || value.trim().isEmpty)) {
+                              return 'Especifica la clase';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _adrCodigoUnController,
+                          decoration: const InputDecoration(
+                            labelText: 'Código UN',
+                            hintText: 'UN XXXX',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            if (_esAdr && (value == null || value.trim().isEmpty)) {
+                              return 'Especifica código UN';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
+
+                _buildSectionHeader('Cliente y Destinatario', Icons.people_outline_rounded),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _clienteNombreController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nombre del cliente',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _clienteContactoController,
+                        decoration: const InputDecoration(
+                          labelText: 'Contacto del cliente',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _destinatarioNombreController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nombre del destinatario',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _destinatarioContactoController,
+                        decoration: const InputDecoration(
+                          labelText: 'Contacto del destinatario',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -732,11 +1011,27 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
         FilledButton(
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
+            final pesoTxt = _pesoController.text.trim();
+            final pesoVal = pesoTxt.isNotEmpty ? double.tryParse(pesoTxt) : null;
+
             Navigator.of(context).pop(
               _CreateOrderDraft(
                 type: _selectedType,
                 name: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
                 address: _addressController.text.trim(),
+                incoterm: _selectedIncoterm,
+                origen: _origenController.text.trim().isEmpty ? null : _origenController.text.trim(),
+                destino: _destinoController.text.trim().isEmpty ? null : _destinoController.text.trim(),
+                tipoBulto: _selectedTipoBulto,
+                dimensiones: _dimensionesController.text.trim().isEmpty ? null : _dimensionesController.text.trim(),
+                peso: pesoVal,
+                esAdr: _esAdr,
+                adrTipo: _esAdr ? _adrTipoController.text.trim() : null,
+                adrCodigoUn: _esAdr ? _adrCodigoUnController.text.trim() : null,
+                clienteNombre: _clienteNombreController.text.trim().isEmpty ? null : _clienteNombreController.text.trim(),
+                clienteContacto: _clienteContactoController.text.trim().isEmpty ? null : _clienteContactoController.text.trim(),
+                destinatarioNombre: _destinatarioNombreController.text.trim().isEmpty ? null : _destinatarioNombreController.text.trim(),
+                destinatarioContacto: _destinatarioContactoController.text.trim().isEmpty ? null : _destinatarioContactoController.text.trim(),
               ),
             );
           },
@@ -752,9 +1047,35 @@ class _CreateOrderDraft {
     required this.type,
     required this.address,
     this.name,
+    this.incoterm,
+    this.origen,
+    this.destino,
+    this.tipoBulto,
+    this.dimensiones,
+    this.peso,
+    this.esAdr = false,
+    this.adrTipo,
+    this.adrCodigoUn,
+    this.clienteNombre,
+    this.clienteContacto,
+    this.destinatarioNombre,
+    this.destinatarioContacto,
   });
 
   final String type;
   final String? name;
   final String address;
+  final String? incoterm;
+  final String? origen;
+  final String? destino;
+  final String? tipoBulto;
+  final String? dimensiones;
+  final double? peso;
+  final bool esAdr;
+  final String? adrTipo;
+  final String? adrCodigoUn;
+  final String? clienteNombre;
+  final String? clienteContacto;
+  final String? destinatarioNombre;
+  final String? destinatarioContacto;
 }

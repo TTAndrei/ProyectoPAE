@@ -165,6 +165,7 @@ def registrar_usuario(cuerpo: CrearUsuario, compania_id_jwt: str | None = Depend
                 password_hash: $password_hash,
                 role: $role,
                 name: $name,
+                is_available: false,
                 created_at: datetime()
             })
             WITH u

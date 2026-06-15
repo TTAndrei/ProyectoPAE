@@ -1,5 +1,10 @@
 """Configuración y constantes de la aplicación PAE."""
 import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde el archivo .env si existe
+load_dotenv()
+
 
 # ── Autenticación JWT ──────────────────────────────────────────────────────────
 # Clave secreta para firmar los tokens. ¡Cambiar en producción!

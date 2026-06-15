@@ -152,7 +152,135 @@ class OrderDetailsDialog extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
 
+                    // Shipping details section
+                    _buildSectionDivider('DATOS DEL ENVÍO'),
+
+                    if (order.incoterm != null && order.incoterm!.isNotEmpty) ...[
+                      _buildDetailRow(
+                        icon: Icons.gavel_outlined,
+                        label: 'Incoterm',
+                        value: order.incoterm!,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    if (order.origen != null && order.origen!.isNotEmpty) ...[
+                      _buildDetailRow(
+                        icon: Icons.location_on_outlined,
+                        label: 'Origen del Envío',
+                        value: order.origen!,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    if (order.destino != null && order.destino!.isNotEmpty) ...[
+                      _buildDetailRow(
+                        icon: Icons.flag_outlined,
+                        label: 'Destino del Envío',
+                        value: order.destino!,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    if (order.tipoBulto != null && order.tipoBulto!.isNotEmpty) ...[
+                      _buildDetailRow(
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Tipo de Bulto',
+                        value: order.tipoBulto![0].toUpperCase() + order.tipoBulto!.substring(1),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    if (order.dimensiones != null && order.dimensiones!.isNotEmpty) ...[
+                      _buildDetailRow(
+                        icon: Icons.straighten_outlined,
+                        label: 'Dimensiones',
+                        value: order.dimensiones!,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    if (order.peso != null) ...[
+                      _buildDetailRow(
+                        icon: Icons.scale_outlined,
+                        label: 'Peso total',
+                        value: '${order.peso!.toStringAsFixed(1)} kg',
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ADR Warning Box
+                    if (order.esAdr) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3CD),
+                          border: Border.all(color: const Color(0xFFFFEBA8)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, color: Color(0xFF856404), size: 22),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'MERCANCÍA PELIGROSA (ADR)',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF856404),
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Clase: ${order.adrTipo ?? "No especificada"}\nCódigo UN: ${order.adrCodigoUn ?? "No especificado"}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF533F03),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // Client & Recipient Contacts Section
+                    if ((order.clienteNombre != null && order.clienteNombre!.isNotEmpty) ||
+                        (order.destinatarioNombre != null && order.destinatarioNombre!.isNotEmpty)) ...[
+                      _buildSectionDivider('CLIENTE Y DESTINATARIO'),
+                    ],
+
+                    if (order.clienteNombre != null && order.clienteNombre!.isNotEmpty) ...[
+                      _buildDetailRow(
+                        icon: Icons.person_outline,
+                        label: 'Cliente / Remitente',
+                        value: '${order.clienteNombre!}${order.clienteContacto != null && order.clienteContacto!.isNotEmpty ? " (${order.clienteContacto})" : ""}',
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    if (order.destinatarioNombre != null && order.destinatarioNombre!.isNotEmpty) ...[
+                      _buildDetailRow(
+                        icon: Icons.local_shipping_outlined,
+                        label: 'Destinatario',
+                        value: '${order.destinatarioNombre!}${order.destinatarioContacto != null && order.destinatarioContacto!.isNotEmpty ? " (${order.destinatarioContacto})" : ""}',
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
                     // Timestamps & Estimates
+                    _buildSectionDivider('LOGÍSTICA Y TIEMPOS'),
+
                     if (order.estimatedExtraMinutes != null) ...[
                       _buildDetailRow(
                         icon: Icons.timer_outlined,
@@ -305,6 +433,27 @@ class OrderDetailsDialog extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSectionDivider(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const Divider(height: 12, color: Color(0xFFEAE7E7)),
+        ],
+      ),
     );
   }
 }

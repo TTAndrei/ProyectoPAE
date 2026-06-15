@@ -127,7 +127,7 @@ async def test_asignar_pedido(cliente, token_central):
     )
     assert respuesta.status_code == 200
     datos = respuesta.json()
-    assert datos["order"]["status"] == "assigned"
+    assert datos["order"]["status"] == "in_progress"
     assert isinstance(datos["extra_minutes"], float)
 
 

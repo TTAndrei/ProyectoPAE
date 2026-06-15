@@ -25,7 +25,7 @@ def listar_repartidores(usuario_actual: dict = Depends(requerir_central)):
             RETURN u.id AS id, u.username AS username, u.name AS name,
                    u.lat AS lat, u.lng AS lng, u.heading AS heading,
                    toString(u.location_updated_at) AS location_updated_at,
-                   coalesce(u.is_available, true) AS is_available,
+                   coalesce(u.is_available, false) AS is_available,
                    c.id AS company_id, c.name AS company_name
         """, {"company_id": company_id})
         repartidores = []
@@ -87,7 +87,7 @@ def obtener_ubicacion_repartidor(
             MATCH (u:User {id: $id})
             RETURN u.lat AS lat, u.lng AS lng, u.heading AS heading, u.id AS driver_id,
                    toString(u.location_updated_at) AS updated_at,
-                   coalesce(u.is_available, true) AS is_available
+                   coalesce(u.is_available, false) AS is_available
         """, {"id": id_repartidor})
         record = result.single()
         if not record or record["lat"] is None:

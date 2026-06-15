@@ -91,7 +91,7 @@ def obtener_repartidores_activos_con_paradas_para_pedido(
         MATCH (order_comp:Order {id: $oid})-[:BELONGS_TO]->(c:Company)
         MATCH (u:User {role: 'repartidor'})-[:BELONGS_TO]->(c)
         WHERE u.lat IS NOT NULL
-          AND coalesce(u.is_available, true) = true
+          AND coalesce(u.is_available, false) = true
           AND NOT (u)-[:REJECTED_BY]->(:Order {id: $oid})
         OPTIONAL MATCH (u)-[:ASSIGNED_TO]->(o:Order)
         WHERE o.status IN ["assigned", "in_progress"]
@@ -247,12 +247,13 @@ def _asignar_en_session(
     id_repartidor: str,
     minutos_extra: float,
     candidate_ids: list[str],
+    status: str = 'assigned',
 ) -> tuple[dict, dict, list[str]]:
     antiguos = _eliminar_asignaciones(session, id_pedido)
     session.run(
         """
         MATCH (o:Order {id: $oid}), (u:User {id: $uid})
-        SET o.status = 'assigned',
+        SET o.status = $status,
             o.estimated_extra_minutes = $minutos,
             o.candidate_driver_ids = $candidate_ids,
             o.current_candidate_idx = 0,
@@ -264,6 +265,7 @@ def _asignar_en_session(
             "uid": id_repartidor,
             "minutos": minutos_extra,
             "candidate_ids": candidate_ids,
+            "status": status,
         },
     )
 
@@ -291,6 +293,19 @@ async def crear_pedido(cuerpo: CrearPedido, company_id: str) -> dict:
                 lat: $lat,
                 lng: $lng,
                 status: 'pending',
+                incoterm: $incoterm,
+                origen: $origen,
+                destino: $destino,
+                tipo_bulto: $tipo_bulto,
+                dimensiones: $dimensiones,
+                peso: $peso,
+                es_adr: $es_adr,
+                adr_tipo: $adr_tipo,
+                adr_codigo_un: $adr_codigo_un,
+                cliente_nombre: $cliente_nombre,
+                cliente_contacto: $cliente_contacto,
+                destinatario_nombre: $destinatario_nombre,
+                destinatario_contacto: $destinatario_contacto,
                 created_at: datetime(),
                 updated_at: datetime()
             })
@@ -303,6 +318,19 @@ async def crear_pedido(cuerpo: CrearPedido, company_id: str) -> dict:
                 "address": cuerpo.address,
                 "lat": cuerpo.lat,
                 "lng": cuerpo.lng,
+                "incoterm": cuerpo.incoterm,
+                "origen": cuerpo.origen,
+                "destino": cuerpo.destino,
+                "tipo_bulto": cuerpo.tipo_bulto,
+                "dimensiones": cuerpo.dimensiones,
+                "peso": cuerpo.peso,
+                "es_adr": cuerpo.es_adr,
+                "adr_tipo": cuerpo.adr_tipo,
+                "adr_codigo_un": cuerpo.adr_codigo_un,
+                "cliente_nombre": cuerpo.cliente_nombre,
+                "cliente_contacto": cuerpo.cliente_contacto,
+                "destinatario_nombre": cuerpo.destinatario_nombre,
+                "destinatario_contacto": cuerpo.destinatario_contacto,
                 "company_id": company_id,
             },
         )
@@ -387,8 +415,11 @@ async def asignar_pedido(id_pedido: str, id_repartidor: str) -> dict:
             id_repartidor,
             minutos_extra,
             candidate_ids,
+            status='in_progress',
         )
         registrar_evento_auditoria(session, id_pedido, 'assign', driver_id=id_repartidor, details=f"Asignado manualmente con {minutos_extra} min extra")
+        registrar_evento_auditoria(session, id_pedido, 'accept', driver_id=id_repartidor, details="Aceptado automáticamente por asignación manual")
+        registrar_evento_auditoria(session, id_pedido, 'start_delivery', driver_id=id_repartidor, details="Pedido en curso")
 
     await gestor.enviar_a_repartidor(
         id_repartidor,

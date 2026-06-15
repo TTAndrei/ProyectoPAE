@@ -16,20 +16,35 @@ class RouteService {
   }
 
   /// Returns `true` when the geometry has too few points to be a real street-level route.
+  ///
+  /// Uses strict `<` (not `<=`) so that a fallback straight-line with exactly
+  /// [orders.length + 1] points is still considered drawable.
   bool isSparseRouteGeometry(DriverRoutePlan plan) {
     if (plan.routeGeometry.length < 2) return true;
     final minimumWaypointCount =
         plan.orders.isEmpty ? 0 : plan.orders.length + 1;
-    return plan.routeGeometry.length <= minimumWaypointCount;
+    return plan.routeGeometry.length < minimumWaypointCount;
   }
 
   /// Keeps the richer geometry when the incoming one is sparse but
   /// the existing one already has street-level detail.
+  ///
+  /// Exception: if the order list changed (driver accepted a new order or
+  /// completed one), the old geometry is stale and the incoming plan is
+  /// always preferred so the map updates immediately.
   DriverRoutePlan preferStreetGeometry({
     required DriverRoutePlan incoming,
     DriverRoutePlan? current,
   }) {
     if (current == null) return incoming;
+
+    // If the set of orders changed, old geometry is stale — always use incoming.
+    final incomingIds = incoming.orders.map((o) => o.id).toSet();
+    final currentIds = current.orders.map((o) => o.id).toSet();
+    if (incomingIds.length != currentIds.length ||
+        !incomingIds.containsAll(currentIds)) {
+      return incoming;
+    }
 
     final incomingSparse = isSparseRouteGeometry(incoming);
     final currentLooksStreet = !isSparseRouteGeometry(current);

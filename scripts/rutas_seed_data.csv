@@ -1,0 +1,22 @@
+
+id,type,name,address,lat,lng,status,driver_id,incoterm,origen,destino,tipo_bulto,dimensiones,peso,es_adr,adr_tipo,adr_codigo_un,cliente_nombre,cliente_contacto,destinatario_nombre,destinatario_contacto
+order-1,delivery,Restaurante El Prado,Calle Iglesia 15 Pineda de Mar,41.6262,2.6908,assigned,driver-1,EXW,Barcelona,Pineda de Mar,caja,30x30x30 cm,15.5,false,,,,Alimentación SL,+34931234567,Restaurante El Prado,+34600111222
+order-2,delivery,Librería Central,Calle Mayor 45 Pineda de Mar,41.6258,2.6875,assigned,driver-1,DDP,Girona,Pineda de Mar,pallet,120x80x160 cm,120.0,false,,,,Libros S.A.,+34972123456,Librería Central,+34600333444
+order-3,delivery,Farmacia Serrano,Avenida Montserrat 8 Pineda de Mar,41.6291,2.6844,pending,,CIF,Madrid,Pineda de Mar,caja,20x20x15 cm,2.3,true,Clase 3,UN 1203,Farma Distribución,+34911234567,Farmacia Serrano,+34600555666
+order-4,delivery,Tienda Zara,Calle Iglesia 120 Calella,41.6145,2.6591,pending,,DAP,Zaragoza,Calella,cajon,100x100x80 cm,45.0,false,,,,Zara Logística,+34976123456,Zara Calella,+34600777888
+order-5,delivery,Supermercado Día,Calle Riera 30 Calella,41.6128,2.6548,pending,,EXW,Valencia,Calella,pallet,120x80x120 cm,80.0,false,,,,Distribuciones Día,+34961234567,Supermercado Día,+34600999000
+order-6,pickup,Cafetería Starbucks,Paseo Marítimo 50 Pineda de Mar,41.6235,2.6932,pending,,FOB,Colombia,Pineda de Mar,caja,40x40x50 cm,18.0,false,,,,Café Import S.A.,+34932345678,Cafetería Starbucks,+34600222333
+order-7,delivery,Hotel Mar Azul,Avenida del Mar 22 Pineda de Mar,41.6248,2.6915,pending,,EXW,Málaga,Pineda de Mar,pallet,120x80x180 cm,150.0,false,,,,Hoteles del Sur,+34951234567,Hotel Mar Azul,+34600112233
+order-8,pickup,Pescadería La Barca,Calle Port 5 Calella,41.6131,2.6542,pending,,EXW,Calella,Arenys de Mar,caja,60x40x40 cm,25.0,false,,,,Pescados Calella,+34937654321,Pescadería La Barca,+34600445566
+order-9,delivery,Clínica Dental Soler,Rambla Catalunya 10 Calella,41.6152,2.6620,assigned,driver-2,DDP,Bilbao,Calella,caja,30x20x20 cm,5.0,false,,,,Dental Express,+34941234567,Clínica Dental Soler,+34600778899
+order-10,pickup,Quiosc La Rambla,Rambla Pineda 3 Pineda de Mar,41.6270,2.6870,pending,,EXW,Pineda de Mar,Barcelona,caja,40x30x20 cm,8.0,false,,,,Editorial Planeta,+34932000000,Quiosc La Rambla,+34600990011
+order-11,delivery,Pizzería Napoli,Carrer del Mar 18 Malgrat de Mar,41.6478,2.7422,pending,,EXW,Napoli,Malgrat de Mar,cajon,80x60x60 cm,35.0,false,,,,Harinas Napoli,+39081234567,Pizzería Napoli,+34600223344
+order-12,delivery,Ferretería Mas,Calle Industria 7 Malgrat de Mar,41.6465,2.7398,pending,,DAP,Tarragona,Malgrat de Mar,pallet,120x80x100 cm,95.0,false,,,,Herramientas Mas,+34977123456,Ferretería Mas,+34600556677
+
+# ------- RUTAS -------
+# Sección C: Definición de rutas activas por repartidor
+# route_orders = IDs separados por | en el orden de visita deseado
+
+route_id,route_driver,route_orders,route_status
+route-1,driver-1,order-1|order-2,active
+route-2,driver-2,order-9,active

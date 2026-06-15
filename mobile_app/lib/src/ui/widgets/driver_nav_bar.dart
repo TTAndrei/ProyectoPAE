@@ -48,6 +48,15 @@ class _DriverNavBarState extends State<DriverNavBar> {
 
   void _showIncomingOrderDialog(AssignOrderResult event) {
     if (!mounted) return;
+    if (event.order.status == 'in_progress') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Central ha asignado un pedido directamente a tu ruta: ${event.order.address}'),
+          backgroundColor: AppTheme.secondary,
+        ),
+      );
+      return;
+    }
     if (_shownDialogOrderIds.contains(event.order.id)) return;
 
     _shownDialogOrderIds.add(event.order.id);

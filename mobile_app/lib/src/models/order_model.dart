@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 double _asDouble(dynamic value, {double fallback = 0.0}) {
   if (value is num) {
     return value.toDouble();
@@ -21,6 +23,19 @@ class OrderModel {
     this.name,
     this.assignedDriverId,
     this.estimatedExtraMinutes,
+    this.incoterm,
+    this.origen,
+    this.destino,
+    this.tipoBulto,
+    this.dimensiones,
+    this.peso,
+    this.esAdr = false,
+    this.adrTipo,
+    this.adrCodigoUn,
+    this.clienteNombre,
+    this.clienteContacto,
+    this.destinatarioNombre,
+    this.destinatarioContacto,
   });
 
   final String id;
@@ -34,6 +49,19 @@ class OrderModel {
   final String updatedAt;
   final String? assignedDriverId;
   final double? estimatedExtraMinutes;
+  final String? incoterm;
+  final String? origen;
+  final String? destino;
+  final String? tipoBulto;
+  final String? dimensiones;
+  final double? peso;
+  final bool esAdr;
+  final String? adrTipo;
+  final String? adrCodigoUn;
+  final String? clienteNombre;
+  final String? clienteContacto;
+  final String? destinatarioNombre;
+  final String? destinatarioContacto;
 
   bool get isPending => status == 'pending';
   bool get isAssigned => status == 'assigned';
@@ -55,6 +83,19 @@ class OrderModel {
           : _asDouble(json['estimated_extra_minutes']),
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',
+      incoterm: json['incoterm']?.toString(),
+      origen: json['origen']?.toString(),
+      destino: json['destino']?.toString(),
+      tipoBulto: json['tipo_bulto']?.toString(),
+      dimensiones: json['dimensiones']?.toString(),
+      peso: json['peso'] == null ? null : _asDouble(json['peso']),
+      esAdr: json['es_adr'] == true,
+      adrTipo: json['adr_tipo']?.toString(),
+      adrCodigoUn: json['adr_codigo_un']?.toString(),
+      clienteNombre: json['cliente_nombre']?.toString(),
+      clienteContacto: json['cliente_contacto']?.toString(),
+      destinatarioNombre: json['destinatario_nombre']?.toString(),
+      destinatarioContacto: json['destinatario_contacto']?.toString(),
     );
   }
 }
@@ -66,6 +107,19 @@ class CreateOrderInput {
     required this.lat,
     required this.lng,
     this.name,
+    this.incoterm,
+    this.origen,
+    this.destino,
+    this.tipoBulto,
+    this.dimensiones,
+    this.peso,
+    this.esAdr = false,
+    this.adrTipo,
+    this.adrCodigoUn,
+    this.clienteNombre,
+    this.clienteContacto,
+    this.destinatarioNombre,
+    this.destinatarioContacto,
   });
 
   final String type;
@@ -73,6 +127,19 @@ class CreateOrderInput {
   final String address;
   final double lat;
   final double lng;
+  final String? incoterm;
+  final String? origen;
+  final String? destino;
+  final String? tipoBulto;
+  final String? dimensiones;
+  final double? peso;
+  final bool esAdr;
+  final String? adrTipo;
+  final String? adrCodigoUn;
+  final String? clienteNombre;
+  final String? clienteContacto;
+  final String? destinatarioNombre;
+  final String? destinatarioContacto;
 
   Map<String, dynamic> toJson() {
     return {
@@ -81,6 +148,19 @@ class CreateOrderInput {
       'address': address,
       'lat': lat,
       'lng': lng,
+      if (incoterm != null && incoterm!.isNotEmpty) 'incoterm': incoterm,
+      if (origen != null && origen!.isNotEmpty) 'origen': origen,
+      if (destino != null && destino!.isNotEmpty) 'destino': destino,
+      if (tipoBulto != null && tipoBulto!.isNotEmpty) 'tipo_bulto': tipoBulto,
+      if (dimensiones != null && dimensiones!.isNotEmpty) 'dimensiones': dimensiones,
+      if (peso != null) 'peso': peso,
+      'es_adr': esAdr,
+      if (adrTipo != null && adrTipo!.isNotEmpty) 'adr_tipo': adrTipo,
+      if (adrCodigoUn != null && adrCodigoUn!.isNotEmpty) 'adr_codigo_un': adrCodigoUn,
+      if (clienteNombre != null && clienteNombre!.isNotEmpty) 'cliente_nombre': clienteNombre,
+      if (clienteContacto != null && clienteContacto!.isNotEmpty) 'cliente_contacto': clienteContacto,
+      if (destinatarioNombre != null && destinatarioNombre!.isNotEmpty) 'destinatario_nombre': destinatarioNombre,
+      if (destinatarioContacto != null && destinatarioContacto!.isNotEmpty) 'destinatario_contacto': destinatarioContacto,
     };
   }
 }
@@ -165,12 +245,30 @@ class DriverRoutePlan {
             .toList();
 
     final rawGeometry = json['route_geometry'];
-    final geometry = rawGeometry is! List
-        ? const <RoutePoint>[]
-        : rawGeometry
-            .whereType<Map>()
-            .map((raw) => RoutePoint.fromJson(Map<String, dynamic>.from(raw)))
-            .toList();
+    List<RoutePoint> geometry;
+    if (rawGeometry is String) {
+      // Backend persists geometry as json.dumps() string in Neo4j;
+      // parse it back to a list on the Flutter side.
+      try {
+        final decoded = jsonDecode(rawGeometry);
+        geometry = decoded is List
+            ? decoded
+                .whereType<Map>()
+                .map((raw) =>
+                    RoutePoint.fromJson(Map<String, dynamic>.from(raw)))
+                .toList()
+            : const <RoutePoint>[];
+      } catch (_) {
+        geometry = const <RoutePoint>[];
+      }
+    } else if (rawGeometry is List) {
+      geometry = rawGeometry
+          .whereType<Map>()
+          .map((raw) => RoutePoint.fromJson(Map<String, dynamic>.from(raw)))
+          .toList();
+    } else {
+      geometry = const <RoutePoint>[];
+    }
 
     final rawLegs = json['leg_minutes'];
     final legs = rawLegs is! List

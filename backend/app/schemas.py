@@ -51,6 +51,19 @@ class CrearPedido(BaseModel):
     lat: float
     lng: float
     name: Optional[str] = None
+    incoterm: Optional[str] = None
+    origen: Optional[str] = None
+    destino: Optional[str] = None
+    tipo_bulto: Optional[str] = None
+    dimensiones: Optional[str] = None
+    peso: Optional[float] = None
+    es_adr: Optional[bool] = False
+    adr_tipo: Optional[str] = None
+    adr_codigo_un: Optional[str] = None
+    cliente_nombre: Optional[str] = None
+    cliente_contacto: Optional[str] = None
+    destinatario_nombre: Optional[str] = None
+    destinatario_contacto: Optional[str] = None
 
     @field_validator("type")
     @classmethod
@@ -58,6 +71,14 @@ class CrearPedido(BaseModel):
         if valor not in ("delivery", "pickup"):
             raise ValueError("El tipo debe ser 'delivery' o 'pickup'")
         return valor
+
+    @field_validator("tipo_bulto")
+    @classmethod
+    def validar_tipo_bulto(cls, valor: Optional[str]) -> Optional[str]:
+        if valor is not None and valor not in ("caja", "pallet", "cajon"):
+            raise ValueError("El tipo de bulto debe ser 'caja', 'pallet' o 'cajon'")
+        return valor
+
 
 
 class AsignarPedido(BaseModel):
@@ -92,6 +113,20 @@ class PedidoRespuesta(BaseModel):
     backhauling_candidates: list[dict] = []
     created_at: str
     updated_at: str
+    incoterm: Optional[str] = None
+    origen: Optional[str] = None
+    destino: Optional[str] = None
+    tipo_bulto: Optional[str] = None
+    dimensiones: Optional[str] = None
+    peso: Optional[float] = None
+    es_adr: Optional[bool] = False
+    adr_tipo: Optional[str] = None
+    adr_codigo_un: Optional[str] = None
+    cliente_nombre: Optional[str] = None
+    cliente_contacto: Optional[str] = None
+    destinatario_nombre: Optional[str] = None
+    destinatario_contacto: Optional[str] = None
+
 
 
 class ActualizarUbicacion(BaseModel):
