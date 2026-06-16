@@ -290,8 +290,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             children: [
               TileLayer(
                 urlTemplate:
-                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: const ['a', 'b', 'c'],
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.pae.mobile',
               ),
               PolylineLayer(polylines: polylines),
               MarkerLayer(markers: markers),

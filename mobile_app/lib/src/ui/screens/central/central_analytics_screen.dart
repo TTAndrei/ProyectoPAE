@@ -892,12 +892,7 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
   }
 
   Widget _buildAuditTimelinePane(List<RouteHistoryModel> routes) {
-    // Collect order ids from completed routes to show as helper quick shortcuts
-    final Set<String> quickOrderIds = {};
-    for (final r in routes) {
-      quickOrderIds.addAll(r.completedOrderIds);
-    }
-    final quickOrdersList = quickOrderIds.take(6).toList();
+
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -955,31 +950,6 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            // Quick links
-            if (quickOrdersList.isNotEmpty) ...[
-              const Text(
-                'Pedidos de ejemplo en historial:',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
-              ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: quickOrdersList.map((id) {
-                  final shortId = id.length > 8 ? id.substring(0, 8) : id;
-                  return ChoiceChip(
-                    label: Text(shortId),
-                    selected: _selectedOrderId == id,
-                    onSelected: (selected) {
-                      if (selected) {
-                        _triggerSearch(id);
-                      }
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-            ],
             // Results area
             Expanded(
               child: _buildTimelineContent(),
@@ -1045,13 +1015,14 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
     final sortedLogs = List<AuditLogModel>.from(logs)
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
+    final String shortOrderId = _selectedOrderId.length > 8 ? _selectedOrderId.substring(0, 8) : _selectedOrderId;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
-            'Auditoría: $_selectedOrderId',
+            'Trazabilidad del Pedido: $shortOrderId',
             style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.secondary),
           ),
         ),

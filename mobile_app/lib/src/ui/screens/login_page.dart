@@ -91,106 +91,101 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const SizedBox(height: 12),
-                          // App name
-                          Text(
-                            'PAE Mobile',
-                            style: GoogleFonts.inter(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: -0.5,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const SizedBox(height: 12),
+                            // App name
+                            Text(
+                              'PAE Mobile',
+                              style: GoogleFonts.inter(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: -0.5,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          // Subtitle
-                          Text(
-                            'Gestión de rutas de última milla',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.7),
-                              fontSize: 14,
+                            const SizedBox(height: 6),
+                            // Subtitle
+                            Text(
+                              'Gestión de rutas de última milla',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.7),
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 32),
-                          Form(
-                            key: _formKey,
-                            child: Column(
-                              children: [
-                                AppTextField(
-                                  controller: _usernameController,
-                                  labelText: 'Usuario',
-                                  fillColor:
-                                      Colors.white.withValues(alpha: 0.08),
-                                  style: const TextStyle(color: Colors.white),
-                                  labelStyle: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.7)),
-                                  focusedBorderColor:
-                                      Colors.white.withValues(alpha: 0.3),
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return 'Ingresa tu usuario';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 18),
-                                AppTextField(
-                                  controller: _passwordController,
-                                  obscureText: true,
-                                  labelText: 'Contraseña',
-                                  fillColor:
-                                      Colors.white.withValues(alpha: 0.08),
-                                  style: const TextStyle(color: Colors.white),
-                                  labelStyle: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.7)),
-                                  focusedBorderColor:
-                                      Colors.white.withValues(alpha: 0.3),
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Ingresa tu contraseña';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 28),
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 48,
-                                  child: AppButton(
-                                    text: 'Entrar',
-                                    onPressed:
-                                        session.isLoading ? null : _submit,
-                                    isLoading: session.isLoading,
+                            const SizedBox(height: 32),
+                            Form(
+                              key: _formKey,
+                              child: Column(
+                                children: [
+                                  AppTextField(
+                                    controller: _usernameController,
+                                    labelText: 'Usuario',
+                                    fillColor:
+                                        Colors.white.withValues(alpha: 0.08),
+                                    style: const TextStyle(color: Colors.white),
+                                    labelStyle: TextStyle(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.7)),
+                                    focusedBorderColor:
+                                        Colors.white.withValues(alpha: 0.3),
+                                    validator: (value) {
+                                      if (value == null ||
+                                          value.trim().isEmpty) {
+                                        return 'Ingresa tu usuario';
+                                      }
+                                      return null;
+                                    },
                                   ),
-                                ),
-                                const SizedBox(height: 20),
-                                // Demo credentials info (keep as before)
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.04),
-                                    borderRadius: BorderRadius.circular(12),
+                                  const SizedBox(height: 18),
+                                  AppTextField(
+                                    controller: _passwordController,
+                                    obscureText: true,
+                                    labelText: 'Contraseña',
+                                    fillColor:
+                                        Colors.white.withValues(alpha: 0.08),
+                                    style: const TextStyle(color: Colors.white),
+                                    labelStyle: TextStyle(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.7)),
+                                    focusedBorderColor:
+                                        Colors.white.withValues(alpha: 0.3),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Ingresa tu contraseña';
+                                      }
+                                      return null;
+                                    },
                                   ),
-                                  child: Text(
-                                    'Demo: central/central123, driver1/driver123, driver2/driver123',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color:
-                                          Colors.white.withValues(alpha: 0.6),
-                                      height: 1.4,
+                                  const SizedBox(height: 28),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 48,
+                                    child: AppButton(
+                                      text: 'Entrar',
+                                      onPressed:
+                                          session.isLoading ? null : _submit,
+                                      isLoading: session.isLoading,
                                     ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 20),
+                                  // Demo credentials info (keep as before)
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.04),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

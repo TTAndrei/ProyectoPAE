@@ -20,3 +20,6 @@ ios/Flutter/ephemeral/
 macos/Flutter/ephemeral/
 linux/flutter/ephemeral/
 windows/flutter/ephemeral/
+
+# Local environment variables
+.env

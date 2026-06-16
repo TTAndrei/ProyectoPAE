@@ -180,9 +180,11 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           children: [
             // Dashboard Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: 16,
+              runSpacing: 12,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,6 +219,7 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       GestureDetector(
                         onTap: () => setState(() => _showUpcoming = true),

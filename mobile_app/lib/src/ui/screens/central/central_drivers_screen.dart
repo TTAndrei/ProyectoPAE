@@ -85,7 +85,9 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isAvailable ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+        color: isAvailable
+            ? Colors.green.withValues(alpha: 0.1)
+            : Colors.red.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -132,6 +134,8 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
   Widget build(BuildContext context) {
     final centralProv = context.watch<CentralProvider>();
     final drivers = centralProv.drivers;
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isWide = screenWidth > 768;
 
     return Stack(
       children: [
@@ -140,34 +144,68 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Gestión de Conductores',
-                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppTheme.secondary),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Total de repartidores registrados: ${drivers.length}',
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                  AppButton(
-                    onPressed: () {
-                      setState(() {
-                        _showSlideOver = true;
-                      });
-                    },
-                    icon: Icons.person_add_rounded,
-                    text: 'Añadir Conductor',
-                  ),
-                ],
-              ),
+              isWide
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Gestión de Conductores',
+                              style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.secondary),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Total de repartidores registrados: ${drivers.length}',
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                        AppButton(
+                          onPressed: () {
+                            setState(() {
+                              _showSlideOver = true;
+                            });
+                          },
+                          icon: Icons.person_add_rounded,
+                          text: 'Añadir Conductor',
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Gestión de Conductores',
+                          style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.secondary),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Total de repartidores registrados: ${drivers.length}',
+                          style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: AppButton(
+                            onPressed: () {
+                              setState(() {
+                                _showSlideOver = true;
+                              });
+                            },
+                            icon: Icons.person_add_rounded,
+                            text: 'Añadir Conductor',
+                          ),
+                        ),
+                      ],
+                    ),
               const SizedBox(height: 24),
 
               // Drivers Table View
@@ -178,79 +216,111 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
                       ? AppEmptyCard(message: 'No hay conductores registrados')
                       : SingleChildScrollView(
                           scrollDirection: Axis.vertical,
-                          child: DataTable(
-                            columnSpacing: 24,
-                            dataRowMinHeight: 64,
-                            dataRowMaxHeight: 64,
-                            columns: const [
-                              DataColumn(label: Text('Conductor', style: TextStyle(fontWeight: FontWeight.bold))),
-                              DataColumn(label: Text('Compañía', style: TextStyle(fontWeight: FontWeight.bold))),
-                              DataColumn(label: Text('Estado', style: TextStyle(fontWeight: FontWeight.bold))),
-                              DataColumn(label: Text('Valoración', style: TextStyle(fontWeight: FontWeight.bold))),
-                              DataColumn(label: Text('Acciones', style: TextStyle(fontWeight: FontWeight.bold))),
-                            ],
-                            rows: drivers.map((driver) {
-                              return DataRow(
-                                cells: [
-                                  // Conductor (Name + Username)
-                                  DataCell(
-                                    Row(
-                                      children: [
-                                        CircleAvatar(
-                                          backgroundColor: AppTheme.secondary.withValues(alpha: 0.1),
-                                          child: Text(
-                                            driver.name.isNotEmpty ? driver.name[0].toUpperCase() : 'U',
-                                            style: const TextStyle(color: AppTheme.secondary, fontWeight: FontWeight.bold),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: DataTable(
+                              columnSpacing: 24,
+                              dataRowMinHeight: 64,
+                              dataRowMaxHeight: 64,
+                              columns: const [
+                                DataColumn(
+                                    label: Text('Conductor',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold))),
+                                DataColumn(
+                                    label: Text('Compañía',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold))),
+                                DataColumn(
+                                    label: Text('Estado',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold))),
+                                DataColumn(
+                                    label: Text('Valoración',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold))),
+                                DataColumn(
+                                    label: Text('Acciones',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold))),
+                              ],
+                              rows: drivers.map((driver) {
+                                return DataRow(
+                                  cells: [
+                                    // Conductor (Name + Username)
+                                    DataCell(
+                                      Row(
+                                        children: [
+                                          CircleAvatar(
+                                            backgroundColor: AppTheme.secondary
+                                                .withValues(alpha: 0.1),
+                                            child: Text(
+                                              driver.name.isNotEmpty
+                                                  ? driver.name[0].toUpperCase()
+                                                  : 'U',
+                                              style: const TextStyle(
+                                                  color: AppTheme.secondary,
+                                                  fontWeight: FontWeight.bold),
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              driver.name,
-                                              style: const TextStyle(fontWeight: FontWeight.bold),
-                                            ),
-                                            Text(
-                                              '@${driver.username}',
-                                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
+                                          const SizedBox(width: 12),
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                driver.name,
+                                                style: const TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.bold),
+                                              ),
+                                              Text(
+                                                '@${driver.username}',
+                                                style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  // Compañía
-                                  DataCell(
-                                    Text(driver.company != null ? driver.company!.name : 'PAE Logistics'),
-                                  ),
-                                  // Estado
-                                  DataCell(
-                                    _buildStatusChip(driver.isAvailable),
-                                  ),
-                                  // Valoración
-                                  DataCell(
-                                    _buildRatingStars(driver.id),
-                                  ),
-                                  // Acciones
-                                  DataCell(
-                                    Row(
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.map_rounded),
-                                          tooltip: 'Ver en mapa',
-                                          color: AppTheme.secondary,
-                                          onPressed: driver.lat != null
-                                              ? () => widget.onViewOnMap(driver)
-                                              : null,
-                                        ),
-                                      ],
+                                    // Compañía
+                                    DataCell(
+                                      Text(driver.company != null
+                                          ? driver.company!.name
+                                          : 'PAE Logistics'),
                                     ),
-                                  ),
-                                ],
-                              );
-                            }).toList(),
+                                    // Estado
+                                    DataCell(
+                                      _buildStatusChip(driver.isAvailable),
+                                    ),
+                                    // Valoración
+                                    DataCell(
+                                      _buildRatingStars(driver.id),
+                                    ),
+                                    // Acciones
+                                    DataCell(
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.map_rounded),
+                                            tooltip: 'Ver en mapa',
+                                            color: AppTheme.secondary,
+                                            onPressed: driver.lat != null
+                                                ? () =>
+                                                    widget.onViewOnMap(driver)
+                                                : null,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
                           ),
                         ),
                 ),
@@ -283,7 +353,7 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
             child: Material(
               elevation: 16,
               child: Container(
-                width: 420,
+                width: screenWidth < 600 ? screenWidth : 420.0,
                 height: double.infinity,
                 decoration: const BoxDecoration(
                   color: Colors.white,
@@ -296,17 +366,22 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
                     children: [
                       // Slide-over Header
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 20),
                         color: AppTheme.secondary,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text(
                               'Añadir Conductor',
-                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.close, color: Colors.white),
+                              icon:
+                                  const Icon(Icons.close, color: Colors.white),
                               onPressed: () {
                                 if (!_isSaving) {
                                   setState(() {
@@ -328,7 +403,10 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
                             children: [
                               const Text(
                                 'Información de Cuenta',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.secondary),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: AppTheme.secondary),
                               ),
                               const SizedBox(height: 16),
                               TextFormField(
@@ -392,13 +470,16 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
                         padding: const EdgeInsets.all(24),
                         decoration: const BoxDecoration(
                           color: Colors.white,
-                          border: Border(top: BorderSide(color: Colors.black12)),
+                          border:
+                              Border(top: BorderSide(color: Colors.black12)),
                         ),
                         child: Row(
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                                style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 16)),
                                 onPressed: _isSaving
                                     ? null
                                     : () {
@@ -413,7 +494,8 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
                             Expanded(
                               child: AppButton(
                                 onPressed: _isSaving ? null : _submitRegister,
-                                text: _isSaving ? 'Registrando...' : 'Registrar',
+                                text:
+                                    _isSaving ? 'Registrando...' : 'Registrar',
                               ),
                             ),
                           ],

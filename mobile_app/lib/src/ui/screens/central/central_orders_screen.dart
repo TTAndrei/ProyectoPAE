@@ -93,149 +93,245 @@ class _CentralOrdersScreenState extends State<CentralOrdersScreen> {
     final events = orderProv.events;
     final isLoading = orderProv.isLoading || centralProv.isLoading;
 
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isWideHeader = screenWidth > 768;
+
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Gestión de Pedidos',
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppTheme.secondary),
-                  ),
-                  SizedBox(height: 4),
-                  Text('Control de recogida, entregas y despacho de última milla', style: TextStyle(color: Colors.grey)),
-                ],
-              ),
-              Wrap(
-                spacing: 12,
-                children: [
-                  AppButton(
-                    onPressed: widget.onCreateOrder,
-                    icon: Icons.add,
-                    text: 'Crear Pedido',
-                  ),
-                  AppButton(
-                    onPressed: () {
-                      context.read<CentralProvider>().loadDrivers();
-                      context.read<OrderProvider>().loadOrders();
-                    },
-                    icon: Icons.refresh,
-                    text: 'Actualizar',
-                    variant: AppButtonVariant.outlined,
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Left Column: Orders List
-                Expanded(
-                  flex: 3,
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    children: [
-                      const Text(
-                        'Pendientes por Asignar',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.secondary),
-                      ),
-                      const SizedBox(height: 12),
-                      if (pendingOrders.isEmpty)
-                        AppEmptyCard(message: 'No hay pedidos pendientes')
-                      else
-                        ...pendingOrders.map(
-                          (order) => _buildPendingOrderCard(order, drivers, isLoading),
+          isWideHeader
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Gestión de Pedidos',
+                          style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.secondary),
                         ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Pedidos en Ruta',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.secondary),
-                      ),
-                      const SizedBox(height: 12),
-                      if (activeOrders.isEmpty)
-                        AppEmptyCard(message: 'No hay pedidos en curso')
-                      else
-                        ...activeOrders.map((order) {
-                          final assignedDriver = drivers.where((d) => d.id == order.assignedDriverId).firstOrNull;
-                          return Card(
-                            color: Colors.white,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              leading: Icon(
-                                _orderTypeIcon(order.type),
-                                color: AppTheme.secondary,
-                              ),
-                              title: Text(order.address, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                              subtitle: Text(
-                                '${_orderTypeLabel(order.type)} - Estado: ${order.status} - Repartidor: ${assignedDriver != null ? assignedDriver.name : "sin asignar"}',
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                            ),
-                          );
-                        }),
-                    ],
-                  ),
+                        SizedBox(height: 4),
+                        Text(
+                            'Control de recogida, entregas y despacho de última milla',
+                            style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 12,
+                      children: [
+                        AppButton(
+                          onPressed: widget.onCreateOrder,
+                          icon: Icons.add,
+                          text: 'Crear Pedido',
+                        ),
+                        AppButton(
+                          onPressed: () {
+                            context.read<CentralProvider>().loadDrivers();
+                            context.read<OrderProvider>().loadOrders();
+                          },
+                          icon: Icons.refresh,
+                          text: 'Actualizar',
+                          variant: AppButtonVariant.outlined,
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Gestión de Pedidos',
+                      style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.secondary),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                        'Control de recogida, entregas y despacho de última milla',
+                        style: TextStyle(color: Colors.grey, fontSize: 13)),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AppButton(
+                            onPressed: widget.onCreateOrder,
+                            icon: Icons.add,
+                            text: 'Crear Pedido',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: AppButton(
+                            onPressed: () {
+                              context.read<CentralProvider>().loadDrivers();
+                              context.read<OrderProvider>().loadOrders();
+                            },
+                            icon: Icons.refresh,
+                            text: 'Actualizar',
+                            variant: AppButtonVariant.outlined,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 24),
+          const SizedBox(height: 24),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 768;
 
-                // Right Column: WebSocket Telemetry Events
-                Expanded(
-                  flex: 2,
-                  child: Card(
-                    color: Colors.white,
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Eventos en Tiempo Real',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.secondary),
-                          ),
-                          const SizedBox(height: 16),
-                          Expanded(
-                            child: events.isEmpty
-                                ? const Center(child: Text('Sin eventos recientes', style: TextStyle(color: Colors.grey)))
-                                : ListView.separated(
-                                    itemCount: events.length,
-                                    separatorBuilder: (_, __) => const Divider(),
-                                    itemBuilder: (context, index) {
-                                      final event = events[index];
-                                      final isError = event.toLowerCase().contains('desconectado') ||
-                                          event.toLowerCase().contains('rechazó') ||
-                                          event.toLowerCase().contains('error');
-                                      return ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        dense: true,
-                                        leading: Icon(
-                                          isError ? Icons.warning_rounded : Icons.info_rounded,
-                                          color: isError ? Colors.red : Colors.blue,
-                                          size: 18,
-                                        ),
-                                        title: Text(
-                                          event,
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                          ),
-                        ],
+                List<Widget> buildOrdersListContent() {
+                  return [
+                    const Text(
+                      'Pendientes por Asignar',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.secondary),
+                    ),
+                    const SizedBox(height: 12),
+                    if (pendingOrders.isEmpty)
+                      AppEmptyCard(message: 'No hay pedidos pendientes')
+                    else
+                      ...pendingOrders.map(
+                        (order) =>
+                            _buildPendingOrderCard(order, drivers, isLoading),
                       ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Pedidos en Ruta',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.secondary),
+                    ),
+                    const SizedBox(height: 12),
+                    if (activeOrders.isEmpty)
+                      AppEmptyCard(message: 'No hay pedidos en curso')
+                    else
+                      ...activeOrders.map((order) {
+                        final assignedDriver = drivers
+                            .where((d) => d.id == order.assignedDriverId)
+                            .firstOrNull;
+                        return Card(
+                          color: Colors.white,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            leading: Icon(
+                              _orderTypeIcon(order.type),
+                              color: AppTheme.secondary,
+                            ),
+                            title: Text(order.address,
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                              'ID: ${order.id}\n${_orderTypeLabel(order.type)} - Estado: ${order.status} - Repartidor: ${assignedDriver != null ? assignedDriver.name : "sin asignar"}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        );
+                      }),
+                  ];
+                }
+
+                final eventsCard = Card(
+                  color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Eventos en Tiempo Real',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.secondary),
+                        ),
+                        const SizedBox(height: 16),
+                        Expanded(
+                          child: events.isEmpty
+                              ? const Center(
+                                  child: Text('Sin eventos recientes',
+                                      style: TextStyle(color: Colors.grey)))
+                              : ListView.separated(
+                                  itemCount: events.length,
+                                  separatorBuilder: (_, __) => const Divider(),
+                                  itemBuilder: (context, index) {
+                                    final event = events[index];
+                                    final isError = event
+                                            .toLowerCase()
+                                            .contains('desconectado') ||
+                                        event
+                                            .toLowerCase()
+                                            .contains('rechazó') ||
+                                        event.toLowerCase().contains('error');
+                                    return ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                      leading: Icon(
+                                        isError
+                                            ? Icons.warning_rounded
+                                            : Icons.info_rounded,
+                                        color:
+                                            isError ? Colors.red : Colors.blue,
+                                        size: 18,
+                                      ),
+                                      title: Text(
+                                        event,
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                );
+
+                if (isWide) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          children: buildOrdersListContent(),
+                        ),
+                      ),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        flex: 2,
+                        child: eventsCard,
+                      ),
+                    ],
+                  );
+                } else {
+                  return ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      ...buildOrdersListContent(),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        height: 350,
+                        child: eventsCard,
+                      ),
+                    ],
+                  );
+                }
+              },
             ),
           ),
         ],
@@ -250,7 +346,8 @@ class _CentralOrdersScreenState extends State<CentralOrdersScreen> {
   ) {
     final defaultDriver = drivers.isNotEmpty ? drivers.first.id : null;
     final selectedDriverId = _selectedDriverByOrder[order.id] ?? defaultDriver;
-    if (selectedDriverId != null && !_selectedDriverByOrder.containsKey(order.id)) {
+    if (selectedDriverId != null &&
+        !_selectedDriverByOrder.containsKey(order.id)) {
       _selectedDriverByOrder[order.id] = selectedDriverId;
     }
 
@@ -264,12 +361,14 @@ class _CentralOrdersScreenState extends State<CentralOrdersScreen> {
           children: [
             Row(
               children: [
-                Icon(_orderTypeIcon(order.type), color: AppTheme.primary, size: 20),
+                Icon(_orderTypeIcon(order.type),
+                    color: AppTheme.primary, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     order.address,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13),
                   ),
                 ),
               ],
@@ -288,13 +387,15 @@ class _CentralOrdersScreenState extends State<CentralOrdersScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Asignar a',
                       border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                     items: drivers
                         .map(
                           (driver) => DropdownMenuItem<String>(
                             value: driver.id,
-                            child: Text(driver.name, style: const TextStyle(fontSize: 12)),
+                            child: Text(driver.name,
+                                style: const TextStyle(fontSize: 12)),
                           ),
                         )
                         .toList(),

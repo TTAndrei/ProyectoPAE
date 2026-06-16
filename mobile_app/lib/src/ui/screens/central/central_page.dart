@@ -194,10 +194,12 @@ class _CentralPageState extends State<CentralPage> {
     return showDialog<GeocodeCandidate>(
       context: context,
       builder: (dialogContext) {
+        final screenWidth = MediaQuery.of(dialogContext).size.width;
+        final dialogWidth = screenWidth < 600 ? screenWidth * 0.9 : 560.0;
         return AlertDialog(
           title: const Text('Dirección ambigua'),
           content: SizedBox(
-            width: 560,
+            width: dialogWidth,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,6 +259,235 @@ class _CentralPageState extends State<CentralPage> {
     );
   }
 
+  String _activeTabTitle() {
+    switch (_activeTab) {
+      case 'dashboard':
+        return 'Dashboard';
+      case 'map':
+        return 'Monitorización';
+      case 'drivers':
+        return 'Conductores';
+      case 'alerts':
+        return 'Alertas y Pedidos';
+      case 'analytics':
+        return 'Analíticas';
+      default:
+        return 'Logistics OS';
+    }
+  }
+
+  Widget _buildSidebar({
+    required BuildContext context,
+    required String companyName,
+    required List<String> events,
+    required SessionController session,
+    required bool isMobile,
+  }) {
+    return Container(
+      color: AppTheme.secondary,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Brand Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: (isMobile || !_isCollapsed)
+                ? Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.local_shipping,
+                            color: Colors.white, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Logistics OS',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (!isMobile)
+                        IconButton(
+                          icon: const Icon(Icons.menu_open,
+                              color: Colors.white70),
+                          onPressed: () => setState(() => _isCollapsed = true),
+                          tooltip: 'Contraer menú',
+                        ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.local_shipping,
+                            color: Colors.white, size: 22),
+                      ),
+                      const SizedBox(height: 16),
+                      IconButton(
+                        icon: const Icon(Icons.menu, color: Colors.white70),
+                        onPressed: () => setState(() => _isCollapsed = false),
+                        tooltip: 'Expandir menú',
+                      ),
+                    ],
+                  ),
+          ),
+          const Divider(
+              color: Colors.white24, height: 1, indent: 16, endIndent: 16),
+          const SizedBox(height: 16),
+
+          // Navigation Items
+          _buildSidebarItem(
+            icon: Icons.dashboard_rounded,
+            label: 'Dashboard',
+            tabId: 'dashboard',
+            isMobile: isMobile,
+          ),
+          _buildSidebarItem(
+            icon: Icons.map_rounded,
+            label: 'Monitorización',
+            tabId: 'map',
+            isMobile: isMobile,
+          ),
+          _buildSidebarItem(
+            icon: Icons.people_rounded,
+            label: 'Conductores',
+            tabId: 'drivers',
+            isMobile: isMobile,
+          ),
+          _buildSidebarItem(
+            icon: Icons.notifications_active_rounded,
+            label: 'Alertas y Pedidos',
+            tabId: 'alerts',
+            badgeText: events.isNotEmpty ? '${events.length}' : null,
+            isMobile: isMobile,
+          ),
+          _buildSidebarItem(
+            icon: Icons.analytics_rounded,
+            label: 'Analíticas',
+            tabId: 'analytics',
+            isMobile: isMobile,
+          ),
+
+          const Spacer(),
+          const Divider(color: Colors.white24, height: 1),
+
+          // Dispatch Center status
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: (isMobile || !_isCollapsed)
+                ? Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Compañía: $companyName',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : Tooltip(
+                    message: 'Compañía: $companyName',
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+          if (!isMobile && _isCollapsed) ...[
+            IconButton(
+              icon: const Icon(Icons.manage_accounts,
+                  color: Colors.white70, size: 20),
+              tooltip: 'Editar Perfil',
+              onPressed: () => _showEditProfileDialog(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+              tooltip: 'Cerrar sesión',
+              onPressed: () => session.logout(),
+            ),
+            const SizedBox(height: 12),
+          ] else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                children: [
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    leading: const Icon(Icons.manage_accounts,
+                        color: Colors.white70, size: 20),
+                    title: const Text('Editar Perfil',
+                        style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    onTap: () => _showEditProfileDialog(context),
+                  ),
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    leading: const Icon(Icons.logout,
+                        color: Colors.redAccent, size: 20),
+                    title: const Text('Cerrar sesión',
+                        style:
+                            TextStyle(color: Colors.redAccent, fontSize: 13)),
+                    onTap: () => session.logout(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final orderProv = context.watch<OrderProvider>();
@@ -269,6 +500,37 @@ class _CentralPageState extends State<CentralPage> {
     final isLoading = orderProv.isLoading || centralProv.isLoading;
     final error = orderProv.error ?? centralProv.error;
 
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isMobile = screenWidth < 768;
+
+    if (isMobile) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: AppTheme.secondary,
+          foregroundColor: Colors.white,
+          title: Text(_activeTabTitle()),
+        ),
+        drawer: Drawer(
+          child: _buildSidebar(
+            context: context,
+            companyName: companyName,
+            events: events,
+            session: session,
+            isMobile: true,
+          ),
+        ),
+        body: Container(
+          color: AppTheme.appBackground,
+          child: _buildActiveContent(
+            isLoading: isLoading,
+            error: error,
+            drivers: drivers,
+            events: events,
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       body: Row(
         children: [
@@ -277,190 +539,12 @@ class _CentralPageState extends State<CentralPage> {
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
             width: _isCollapsed ? 80 : 260,
-            color: AppTheme.secondary,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Brand Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                  child: _isCollapsed
-                      ? Column(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.local_shipping, color: Colors.white, size: 22),
-                            ),
-                            const SizedBox(height: 16),
-                            IconButton(
-                              icon: const Icon(Icons.menu, color: Colors.white70),
-                              onPressed: () => setState(() => _isCollapsed = false),
-                              tooltip: 'Expandir menú',
-                            ),
-                          ],
-                        )
-                      : Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.local_shipping, color: Colors.white, size: 22),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Text(
-                                'Logistics OS',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.menu_open, color: Colors.white70),
-                              onPressed: () => setState(() => _isCollapsed = true),
-                              tooltip: 'Contraer menú',
-                            ),
-                          ],
-                        ),
-                ),
-                const Divider(color: Colors.white24, height: 1, indent: 16, endIndent: 16),
-                const SizedBox(height: 16),
-
-                // Navigation Items
-                _buildSidebarItem(
-                  icon: Icons.dashboard_rounded,
-                  label: 'Dashboard',
-                  tabId: 'dashboard',
-                ),
-                _buildSidebarItem(
-                  icon: Icons.map_rounded,
-                  label: 'Monitorización',
-                  tabId: 'map',
-                ),
-                _buildSidebarItem(
-                  icon: Icons.people_rounded,
-                  label: 'Conductores',
-                  tabId: 'drivers',
-                ),
-                _buildSidebarItem(
-                  icon: Icons.notifications_active_rounded,
-                  label: 'Alertas y Pedidos',
-                  tabId: 'alerts',
-                  badgeText: events.isNotEmpty ? '${events.length}' : null,
-                ),
-                _buildSidebarItem(
-                  icon: Icons.analytics_rounded,
-                  label: 'Analíticas',
-                  tabId: 'analytics',
-                ),
-
-                const Spacer(),
-                const Divider(color: Colors.white24, height: 1),
-
-                // Dispatch Center status
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: _isCollapsed
-                      ? Tooltip(
-                          message: 'Compañía: $companyName',
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white10,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.green,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      : Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white10,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.green,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Compañía: $companyName',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                ),
-                if (_isCollapsed) ...[
-                  IconButton(
-                    icon: const Icon(Icons.manage_accounts, color: Colors.white70, size: 20),
-                    tooltip: 'Editar Perfil',
-                    onPressed: () => _showEditProfileDialog(context),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-                    tooltip: 'Cerrar sesión',
-                    onPressed: () => session.logout(),
-                  ),
-                  const SizedBox(height: 12),
-                ] else ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Column(
-                      children: [
-                        ListTile(
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                          leading: const Icon(Icons.manage_accounts, color: Colors.white70, size: 20),
-                          title: const Text('Editar Perfil', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                          onTap: () => _showEditProfileDialog(context),
-                        ),
-                        ListTile(
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                          leading: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-                          title: const Text('Cerrar sesión', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
-                          onTap: () => session.logout(),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
+            child: _buildSidebar(
+              context: context,
+              companyName: companyName,
+              events: events,
+              session: session,
+              isMobile: false,
             ),
           ),
 
@@ -486,13 +570,17 @@ class _CentralPageState extends State<CentralPage> {
     required String label,
     required String tabId,
     String? badgeText,
+    required bool isMobile,
   }) {
     final isSelected = _activeTab == tabId;
+    final collapsedState = !isMobile && _isCollapsed;
     final itemContent = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Container(
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
+          color: isSelected
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
         child: InkWell(
@@ -501,10 +589,13 @@ class _CentralPageState extends State<CentralPage> {
             setState(() {
               _activeTab = tabId;
             });
+            if (isMobile) {
+              Navigator.of(context).pop(); // close drawer
+            }
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: _isCollapsed
+            child: collapsedState
                 ? Center(
                     child: Stack(
                       clipBehavior: Clip.none,
@@ -519,14 +610,18 @@ class _CentralPageState extends State<CentralPage> {
                             top: -4,
                             right: -8,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
                               decoration: BoxDecoration(
                                 color: AppTheme.primary,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
                                 badgeText,
-                                style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold),
                               ),
                             ),
                           ),
@@ -546,7 +641,9 @@ class _CentralPageState extends State<CentralPage> {
                           label,
                           style: TextStyle(
                             color: isSelected ? Colors.white : Colors.white70,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             fontSize: 14,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -554,14 +651,18 @@ class _CentralPageState extends State<CentralPage> {
                       ),
                       if (badgeText != null)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppTheme.primary,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
                             badgeText,
-                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold),
                           ),
                         ),
                     ],
@@ -571,7 +672,7 @@ class _CentralPageState extends State<CentralPage> {
       ),
     );
 
-    if (_isCollapsed) {
+    if (collapsedState) {
       return Tooltip(
         message: label,
         child: itemContent,
@@ -719,12 +820,14 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dialogWidth = screenWidth < 600 ? screenWidth * 0.9 : 580.0;
     return AlertDialog(
       title: const Text('Crear pedido'),
       content: Form(
         key: _formKey,
         child: SizedBox(
-          width: 580,
+          width: dialogWidth,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -732,14 +835,16 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
               children: [
                 _buildSectionHeader('Datos Generales', Icons.info_outline),
                 DropdownButtonFormField<String>(
-                  value: _selectedType,
+                  initialValue: _selectedType,
                   decoration: const InputDecoration(
                     labelText: 'Tipo de pedido',
                     border: OutlineInputBorder(),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'pickup', child: Text('Pickup (Recogida)')),
-                    DropdownMenuItem(value: 'delivery', child: Text('Delivery (Entrega)')),
+                    DropdownMenuItem(
+                        value: 'pickup', child: Text('Pickup (Recogida)')),
+                    DropdownMenuItem(
+                        value: 'delivery', child: Text('Delivery (Entrega)')),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
@@ -773,7 +878,8 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.place_outlined, size: 15, color: Colors.grey),
+                    const Icon(Icons.place_outlined,
+                        size: 15, color: Colors.grey),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -786,13 +892,13 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                     ),
                   ],
                 ),
-
-                _buildSectionHeader('Datos de Envío', Icons.inventory_2_outlined),
+                _buildSectionHeader(
+                    'Datos de Envío', Icons.inventory_2_outlined),
                 Row(
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _selectedIncoterm,
+                        initialValue: _selectedIncoterm,
                         decoration: const InputDecoration(
                           labelText: 'Incoterm',
                           border: OutlineInputBorder(),
@@ -819,7 +925,7 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _selectedTipoBulto,
+                        initialValue: _selectedTipoBulto,
                         decoration: const InputDecoration(
                           labelText: 'Tipo de bulto',
                           border: OutlineInputBorder(),
@@ -828,8 +934,10 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                         items: const [
                           DropdownMenuItem(value: null, child: Text('Ninguno')),
                           DropdownMenuItem(value: 'caja', child: Text('Caja')),
-                          DropdownMenuItem(value: 'pallet', child: Text('Pallet')),
-                          DropdownMenuItem(value: 'cajon', child: Text('Cajón')),
+                          DropdownMenuItem(
+                              value: 'pallet', child: Text('Pallet')),
+                          DropdownMenuItem(
+                              value: 'cajon', child: Text('Cajón')),
                         ],
                         onChanged: (value) {
                           setState(() {
@@ -880,7 +988,8 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _pesoController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
                         decoration: const InputDecoration(
                           labelText: 'Peso total (kg)',
                           border: OutlineInputBorder(),
@@ -897,11 +1006,11 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                     ),
                   ],
                 ),
-
-                _buildSectionHeader('Mercancía Peligrosa (ADR)', Icons.warning_amber_rounded),
+                _buildSectionHeader(
+                    'Mercancía Peligrosa (ADR)', Icons.warning_amber_rounded),
                 SwitchListTile(
                   title: const Text('¿Contiene mercancía peligrosa (ADR)?'),
-                  activeColor: AppTheme.primary,
+                  activeThumbColor: AppTheme.primary,
                   contentPadding: EdgeInsets.zero,
                   value: _esAdr,
                   onChanged: (val) {
@@ -922,7 +1031,8 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                             border: OutlineInputBorder(),
                           ),
                           validator: (value) {
-                            if (_esAdr && (value == null || value.trim().isEmpty)) {
+                            if (_esAdr &&
+                                (value == null || value.trim().isEmpty)) {
                               return 'Especifica la clase';
                             }
                             return null;
@@ -939,7 +1049,8 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                             border: OutlineInputBorder(),
                           ),
                           validator: (value) {
-                            if (_esAdr && (value == null || value.trim().isEmpty)) {
+                            if (_esAdr &&
+                                (value == null || value.trim().isEmpty)) {
                               return 'Especifica código UN';
                             }
                             return null;
@@ -949,8 +1060,8 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                     ],
                   ),
                 ],
-
-                _buildSectionHeader('Cliente y Destinatario', Icons.people_outline_rounded),
+                _buildSectionHeader(
+                    'Cliente y Destinatario', Icons.people_outline_rounded),
                 Row(
                   children: [
                     Expanded(
@@ -1012,26 +1123,45 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
             final pesoTxt = _pesoController.text.trim();
-            final pesoVal = pesoTxt.isNotEmpty ? double.tryParse(pesoTxt) : null;
+            final pesoVal =
+                pesoTxt.isNotEmpty ? double.tryParse(pesoTxt) : null;
 
             Navigator.of(context).pop(
               _CreateOrderDraft(
                 type: _selectedType,
-                name: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
+                name: _nameController.text.trim().isEmpty
+                    ? null
+                    : _nameController.text.trim(),
                 address: _addressController.text.trim(),
                 incoterm: _selectedIncoterm,
-                origen: _origenController.text.trim().isEmpty ? null : _origenController.text.trim(),
-                destino: _destinoController.text.trim().isEmpty ? null : _destinoController.text.trim(),
+                origen: _origenController.text.trim().isEmpty
+                    ? null
+                    : _origenController.text.trim(),
+                destino: _destinoController.text.trim().isEmpty
+                    ? null
+                    : _destinoController.text.trim(),
                 tipoBulto: _selectedTipoBulto,
-                dimensiones: _dimensionesController.text.trim().isEmpty ? null : _dimensionesController.text.trim(),
+                dimensiones: _dimensionesController.text.trim().isEmpty
+                    ? null
+                    : _dimensionesController.text.trim(),
                 peso: pesoVal,
                 esAdr: _esAdr,
                 adrTipo: _esAdr ? _adrTipoController.text.trim() : null,
                 adrCodigoUn: _esAdr ? _adrCodigoUnController.text.trim() : null,
-                clienteNombre: _clienteNombreController.text.trim().isEmpty ? null : _clienteNombreController.text.trim(),
-                clienteContacto: _clienteContactoController.text.trim().isEmpty ? null : _clienteContactoController.text.trim(),
-                destinatarioNombre: _destinatarioNombreController.text.trim().isEmpty ? null : _destinatarioNombreController.text.trim(),
-                destinatarioContacto: _destinatarioContactoController.text.trim().isEmpty ? null : _destinatarioContactoController.text.trim(),
+                clienteNombre: _clienteNombreController.text.trim().isEmpty
+                    ? null
+                    : _clienteNombreController.text.trim(),
+                clienteContacto: _clienteContactoController.text.trim().isEmpty
+                    ? null
+                    : _clienteContactoController.text.trim(),
+                destinatarioNombre:
+                    _destinatarioNombreController.text.trim().isEmpty
+                        ? null
+                        : _destinatarioNombreController.text.trim(),
+                destinatarioContacto:
+                    _destinatarioContactoController.text.trim().isEmpty
+                        ? null
+                        : _destinatarioContactoController.text.trim(),
               ),
             );
           },
