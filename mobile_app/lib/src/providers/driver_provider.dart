@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/app_user.dart';
@@ -55,6 +56,7 @@ class DriverProvider extends ChangeNotifier {
 
   Timer? _refreshTimer;
   Timer? _secondsTimer;
+  StreamSubscription<Position>? _positionSubscription;
   bool _isLoading = false;
   bool _isLocating = false;
   String? _error;
@@ -108,6 +110,7 @@ class DriverProvider extends ChangeNotifier {
   void dispose() {
     _refreshTimer?.cancel();
     _secondsTimer?.cancel();
+    _stopLocationTracking();
     _wsService.disconnect();
     _incomingOrderStreamController.close();
     _wsRefreshController.close();
@@ -203,6 +206,8 @@ class DriverProvider extends ChangeNotifier {
       _activeJornada = results[2] as Map<String, dynamic>?;
       _kpis = results[3] as DriverKpiModel;
 
+      _updateLocationTracking();
+
       if (_driverLocation != null) {
         _isAvailable = _driverLocation!.isAvailable;
       }
@@ -258,6 +263,7 @@ class DriverProvider extends ChangeNotifier {
     try {
       final res = await _driverService.startJornada(token: _token);
       _activeJornada = res;
+      _updateLocationTracking();
       _pushEvent('Jornada iniciada');
       await _loadData(showLoader: false);
     } catch (e) {
@@ -274,6 +280,7 @@ class DriverProvider extends ChangeNotifier {
     try {
       await _driverService.endJornada(token: _token);
       _activeJornada = null;
+      _updateLocationTracking();
       _pushEvent('Jornada finalizada');
       await _loadData(showLoader: false);
     } catch (e) {
@@ -290,9 +297,11 @@ class DriverProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        throw Exception('Los servicios de ubicación están desactivados.');
+      if (!kIsWeb) {
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          throw Exception('Los servicios de ubicación están desactivados.');
+        }
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
@@ -329,32 +338,94 @@ class DriverProvider extends ChangeNotifier {
   }
 
   Future<void> sendLocationDirect(double lat, double lng) async {
-    await _driverService.updateDriverLocation(
-      token: _token,
-      driverId: _user.id,
-      lat: lat,
-      lng: lng,
-    );
+    try {
+      await _driverService.updateDriverLocation(
+        token: _token,
+        driverId: _user.id,
+        lat: lat,
+        lng: lng,
+      );
 
-    _wsService.send({
-      'type': 'driver:location',
-      'lat': lat,
-      'lng': lng,
-      'heading': 0.0,
-    });
+      _wsService.send({
+        'type': 'driver:location',
+        'lat': lat,
+        'lng': lng,
+        'heading': 0.0,
+      });
 
-    _driverLocation = DriverLocation(
-      driverId: _user.id,
-      lat: lat,
-      lng: lng,
-      heading: 0,
-      updatedAt: DateTime.now().toIso8601String(),
-      isAvailable: _isAvailable,
-    );
+      _driverLocation = DriverLocation(
+        driverId: _user.id,
+        lat: lat,
+        lng: lng,
+        heading: 0,
+        updatedAt: DateTime.now().toIso8601String(),
+        isAvailable: _isAvailable,
+      );
 
-    _pushEvent(
-      'Ubicación real enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
-    );
-    notifyListeners();
+      _pushEvent(
+        'Ubicación real enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+      );
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[DriverProvider] Error sending location: $e');
+    }
+  }
+
+  void _updateLocationTracking() {
+    final shouldTrack = _activeJornada != null;
+    if (shouldTrack && _positionSubscription == null) {
+      _startLocationTracking();
+    } else if (!shouldTrack && _positionSubscription != null) {
+      _stopLocationTracking();
+    }
+  }
+
+  void _startLocationTracking() async {
+    debugPrint('[DriverProvider] Starting location tracking stream...');
+    try {
+      if (!kIsWeb) {
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          debugPrint('[DriverProvider] Location services are disabled.');
+          return;
+        }
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint('[DriverProvider] Location permission denied.');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('[DriverProvider] Location permission permanently denied.');
+        return;
+      }
+
+      _positionSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+        ),
+      ).listen(
+        (Position position) {
+          sendLocationDirect(position.latitude, position.longitude);
+        },
+        onError: (e) {
+          debugPrint('[DriverProvider] Location stream error: $e');
+        },
+      );
+    } catch (e) {
+      debugPrint('[DriverProvider] Error initializing location stream: $e');
+    }
+  }
+
+  void _stopLocationTracking() {
+    debugPrint('[DriverProvider] Stopping location tracking stream.');
+    _positionSubscription?.cancel();
+    _positionSubscription = null;
   }
 }

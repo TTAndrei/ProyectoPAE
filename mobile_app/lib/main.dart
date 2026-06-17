@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'src/app.dart';
 import 'src/config/app_config.dart';
@@ -12,7 +13,7 @@ import 'src/state/session_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  await dotenv.load(fileName: '.env');
   // ── Services ───────────────────────────────────────────────────
   final apiClient = ApiClient(baseUrl: AppConfig.apiBaseUrl);
   final authStore = AuthStore();

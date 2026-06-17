@@ -303,205 +303,229 @@ class _CentralPageState extends State<CentralPage> {
   }) {
     return Container(
       color: AppTheme.secondary,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Brand Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            child: (isMobile || !_isCollapsed)
-                ? Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.local_shipping,
-                            color: Colors.white, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Logistics OS',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (!isMobile)
-                        IconButton(
-                          icon: const Icon(Icons.menu_open,
-                              color: Colors.white70),
-                          onPressed: () => setState(() => _isCollapsed = true),
-                          tooltip: 'Contraer menú',
-                        ),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.local_shipping,
-                            color: Colors.white, size: 22),
-                      ),
-                      const SizedBox(height: 16),
-                      IconButton(
-                        icon: const Icon(Icons.menu, color: Colors.white70),
-                        onPressed: () => setState(() => _isCollapsed = false),
-                        tooltip: 'Expandir menú',
-                      ),
-                    ],
-                  ),
-          ),
-          const Divider(
-              color: Colors.white24, height: 1, indent: 16, endIndent: 16),
-          const SizedBox(height: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool isCollapsedNow = !isMobile && constraints.maxWidth < 180;
 
-          // Navigation Items
-          _buildSidebarItem(
-            icon: Icons.dashboard_rounded,
-            label: 'Dashboard',
-            tabId: 'dashboard',
-            isMobile: isMobile,
-          ),
-          _buildSidebarItem(
-            icon: Icons.map_rounded,
-            label: 'Monitorización',
-            tabId: 'map',
-            isMobile: isMobile,
-          ),
-          _buildSidebarItem(
-            icon: Icons.people_rounded,
-            label: 'Conductores',
-            tabId: 'drivers',
-            isMobile: isMobile,
-          ),
-          _buildSidebarItem(
-            icon: Icons.notifications_active_rounded,
-            label: 'Alertas y Pedidos',
-            tabId: 'alerts',
-            badgeText: events.isNotEmpty ? '${events.length}' : null,
-            isMobile: isMobile,
-          ),
-          _buildSidebarItem(
-            icon: Icons.analytics_rounded,
-            label: 'Analíticas',
-            tabId: 'analytics',
-            isMobile: isMobile,
-          ),
-
-          const Spacer(),
-          const Divider(color: Colors.white24, height: 1),
-
-          // Dispatch Center status
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: (isMobile || !_isCollapsed)
-                ? Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white10,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Compañía: $companyName',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Brand Header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                      child: (!isCollapsedNow)
+                          ? Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.local_shipping,
+                                      color: Colors.white, size: 22),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Text(
+                                    'Logistics OS',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (!isMobile)
+                                  IconButton(
+                                    icon: const Icon(Icons.menu_open,
+                                        color: Colors.white70),
+                                    onPressed: () => setState(() => _isCollapsed = true),
+                                    tooltip: 'Contraer menú',
+                                  ),
+                              ],
+                            )
+                          : Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.local_shipping,
+                                      color: Colors.white, size: 22),
+                                ),
+                                const SizedBox(height: 16),
+                                IconButton(
+                                  icon: const Icon(Icons.menu, color: Colors.white70),
+                                  onPressed: () => setState(() => _isCollapsed = false),
+                                  tooltip: 'Expandir menú',
+                                ),
+                              ],
                             ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
                     ),
-                  )
-                : Tooltip(
-                    message: 'Compañía: $companyName',
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white10,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
+                    const Divider(
+                        color: Colors.white24, height: 1, indent: 16, endIndent: 16),
+                    const SizedBox(height: 16),
+
+                    // Navigation Items
+                    _buildSidebarItem(
+                      icon: Icons.dashboard_rounded,
+                      label: 'Dashboard',
+                      tabId: 'dashboard',
+                      isMobile: isMobile,
+                      isCollapsedNow: isCollapsedNow,
                     ),
-                  ),
-          ),
-          if (!isMobile && _isCollapsed) ...[
-            IconButton(
-              icon: const Icon(Icons.manage_accounts,
-                  color: Colors.white70, size: 20),
-              tooltip: 'Editar Perfil',
-              onPressed: () => _showEditProfileDialog(context),
-            ),
-            IconButton(
-              icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-              tooltip: 'Cerrar sesión',
-              onPressed: () => session.logout(),
-            ),
-            const SizedBox(height: 12),
-          ] else ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Column(
-                children: [
-                  ListTile(
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    leading: const Icon(Icons.manage_accounts,
-                        color: Colors.white70, size: 20),
-                    title: const Text('Editar Perfil',
-                        style: TextStyle(color: Colors.white70, fontSize: 13)),
-                    onTap: () => _showEditProfileDialog(context),
-                  ),
-                  ListTile(
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    leading: const Icon(Icons.logout,
-                        color: Colors.redAccent, size: 20),
-                    title: const Text('Cerrar sesión',
-                        style:
-                            TextStyle(color: Colors.redAccent, fontSize: 13)),
-                    onTap: () => session.logout(),
-                  ),
-                  const SizedBox(height: 12),
-                ],
+                    _buildSidebarItem(
+                      icon: Icons.map_rounded,
+                      label: 'Monitorización',
+                      tabId: 'map',
+                      isMobile: isMobile,
+                      isCollapsedNow: isCollapsedNow,
+                    ),
+                    _buildSidebarItem(
+                      icon: Icons.people_rounded,
+                      label: 'Conductores',
+                      tabId: 'drivers',
+                      isMobile: isMobile,
+                      isCollapsedNow: isCollapsedNow,
+                    ),
+                    _buildSidebarItem(
+                      icon: Icons.notifications_active_rounded,
+                      label: 'Alertas y Pedidos',
+                      tabId: 'alerts',
+                      badgeText: events.isNotEmpty ? '${events.length}' : null,
+                      isMobile: isMobile,
+                      isCollapsedNow: isCollapsedNow,
+                    ),
+                    _buildSidebarItem(
+                      icon: Icons.analytics_rounded,
+                      label: 'Analíticas',
+                      tabId: 'analytics',
+                      isMobile: isMobile,
+                      isCollapsedNow: isCollapsedNow,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ],
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Divider(color: Colors.white24, height: 1),
+
+                    // Dispatch Center status
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: (!isCollapsedNow)
+                          ? Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white10,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.green,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Compañía: $companyName',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Tooltip(
+                              message: 'Compañía: $companyName',
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white10,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.green,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                    if (isCollapsedNow) ...[
+                      IconButton(
+                        icon: const Icon(Icons.manage_accounts,
+                            color: Colors.white70, size: 20),
+                        tooltip: 'Editar Perfil',
+                        onPressed: () => _showEditProfileDialog(context),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                        tooltip: 'Cerrar sesión',
+                        onPressed: () => session.logout(),
+                      ),
+                      const SizedBox(height: 12),
+                    ] else ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Column(
+                          children: [
+                            ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              leading: const Icon(Icons.manage_accounts,
+                                  color: Colors.white70, size: 20),
+                              title: const Text('Editar Perfil',
+                                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+                              onTap: () => _showEditProfileDialog(context),
+                            ),
+                            ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              leading: const Icon(Icons.logout,
+                                  color: Colors.redAccent, size: 20),
+                              title: const Text('Cerrar sesión',
+                                  style:
+                                      TextStyle(color: Colors.redAccent, fontSize: 13)),
+                              onTap: () => session.logout(),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -589,9 +613,10 @@ class _CentralPageState extends State<CentralPage> {
     required String tabId,
     String? badgeText,
     required bool isMobile,
+    required bool isCollapsedNow,
   }) {
     final isSelected = _activeTab == tabId;
-    final collapsedState = !isMobile && _isCollapsed;
+    final collapsedState = isCollapsedNow;
     final itemContent = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Container(

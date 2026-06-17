@@ -39,6 +39,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerOnKnownDriver();
+      _locateAndCenterOnDriver();
     });
   }
 
