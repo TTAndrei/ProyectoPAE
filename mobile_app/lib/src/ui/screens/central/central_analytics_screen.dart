@@ -48,7 +48,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
     });
 
     try {
-      final logs = await context.read<CentralProvider>().loadOrderAudit(orderId.trim());
+      final logs =
+          await context.read<CentralProvider>().loadOrderAudit(orderId.trim());
       setState(() {
         _currentAuditLogs = logs;
       });
@@ -274,7 +275,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'Distancia Total Recorrida',
@@ -305,7 +307,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'Distancia Recorrida con Carga',
@@ -423,12 +426,84 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
               );
             },
           ),
+          const SizedBox(height: 24),
+          Text(
+            'KPIs operativos',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.neutral,
+                ),
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final useVertical = constraints.maxWidth < 700;
+              final itemWidth = (constraints.maxWidth - 48) / 4;
+              final widgets = [
+                _buildFleetKpiCard(
+                  title: 'Carga media',
+                  value: summary.averageLoadPackages.toStringAsFixed(2),
+                  suffix: 'paq',
+                  color: AppTheme.secondary,
+                  icon: Icons.inventory_2_outlined,
+                ),
+                _buildFleetKpiCard(
+                  title: 'Desvio medio',
+                  value:
+                      summary.averageInsertionDetourMinutes.toStringAsFixed(1),
+                  suffix: 'min',
+                  color: Colors.orange.shade700,
+                  icon: Icons.add_road_rounded,
+                ),
+                _buildFleetKpiCard(
+                  title: 'Paquetes por km',
+                  value: summary.packagesPerKm.toStringAsFixed(2),
+                  suffix: 'ped/km',
+                  color: Colors.green.shade700,
+                  icon: Icons.speed_rounded,
+                ),
+                _buildFleetKpiCard(
+                  title: 'Aceptacion',
+                  value: (summary.insertionAcceptanceRate * 100)
+                      .toStringAsFixed(1),
+                  suffix: '%',
+                  color: Colors.blue.shade700,
+                  icon: Icons.task_alt_rounded,
+                ),
+              ];
+
+              if (useVertical) {
+                return Column(
+                  children: widgets
+                      .map((widget) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12.0),
+                            child:
+                                SizedBox(width: double.infinity, child: widget),
+                          ))
+                      .toList(),
+                );
+              }
+
+              return Row(
+                children: [
+                  SizedBox(width: itemWidth, child: widgets[0]),
+                  const SizedBox(width: 16),
+                  SizedBox(width: itemWidth, child: widgets[1]),
+                  const SizedBox(width: 16),
+                  SizedBox(width: itemWidth, child: widgets[2]),
+                  const SizedBox(width: 16),
+                  SizedBox(width: itemWidth, child: widgets[3]),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildDistanceIconCard({required IconData icon, required Color color}) {
+  Widget _buildDistanceIconCard(
+      {required IconData icon, required Color color}) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -495,6 +570,80 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
     );
   }
 
+  Widget _buildFleetKpiCard({
+    required String title,
+    required String value,
+    required String suffix,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Card(
+      color: Colors.white,
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: value,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.neutral,
+                          ),
+                        ),
+                        TextSpan(
+                          text: ' $suffix',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Tab 2: Driver Performance ──────────────────────────────────────
   Widget _buildDriversRankingTab(List<DriverPerformanceModel> rankings) {
     if (rankings.isEmpty) {
@@ -518,7 +667,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
 
     // Sort descending by loadEfficiencyPercent
     final sortedRankings = List<DriverPerformanceModel>.from(rankings)
-      ..sort((a, b) => b.loadEfficiencyPercent.compareTo(a.loadEfficiencyPercent));
+      ..sort(
+          (a, b) => b.loadEfficiencyPercent.compareTo(a.loadEfficiencyPercent));
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
@@ -553,7 +703,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundColor: rank <= 3 ? rankColor : Colors.grey.shade200,
+                      backgroundColor:
+                          rank <= 3 ? rankColor : Colors.grey.shade200,
                       child: Text(
                         '$rank',
                         style: TextStyle(
@@ -605,7 +756,9 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
-                            color: meetsTarget ? Colors.green.shade700 : AppTheme.primary,
+                            color: meetsTarget
+                                ? Colors.green.shade700
+                                : AppTheme.primary,
                           ),
                         ),
                       ],
@@ -614,7 +767,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
-                        value: (driver.loadEfficiencyPercent / 100.0).clamp(0.0, 1.0),
+                        value: (driver.loadEfficiencyPercent / 100.0)
+                            .clamp(0.0, 1.0),
                         minHeight: 8,
                         backgroundColor: Colors.grey.shade100,
                         valueColor: AlwaysStoppedAnimation<Color>(
@@ -625,7 +779,16 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                     const SizedBox(height: 6),
                     Text(
                       'Distancia: ${driver.loadedDistanceKm.toStringAsFixed(1)} km con carga / ${driver.totalDistanceKm.toStringAsFixed(1)} km total',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      style:
+                          TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Carga media: ${driver.averageLoadPackages.toStringAsFixed(2)} paq | Desvio: ${driver.averageInsertionDetourMinutes.toStringAsFixed(1)} min | Paq/km: ${driver.packagesPerKm.toStringAsFixed(2)} | Aceptacion: ${(driver.insertionAcceptanceRate * 100).toStringAsFixed(1)}%',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(fontSize: 11, color: Colors.grey.shade600),
                     ),
                   ],
                 );
@@ -634,21 +797,30 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: meetsTarget ? Colors.green.shade50 : Colors.red.shade50,
+                        color: meetsTarget
+                            ? Colors.green.shade50
+                            : Colors.red.shade50,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: meetsTarget ? Colors.green.shade200 : Colors.red.shade200,
+                          color: meetsTarget
+                              ? Colors.green.shade200
+                              : Colors.red.shade200,
                         ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            meetsTarget ? Icons.check_circle_rounded : Icons.warning_rounded,
+                            meetsTarget
+                                ? Icons.check_circle_rounded
+                                : Icons.warning_rounded,
                             size: 14,
-                            color: meetsTarget ? Colors.green.shade700 : Colors.red.shade700,
+                            color: meetsTarget
+                                ? Colors.green.shade700
+                                : Colors.red.shade700,
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -656,7 +828,9 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: meetsTarget ? Colors.green.shade800 : Colors.red.shade800,
+                              color: meetsTarget
+                                  ? Colors.green.shade800
+                                  : Colors.red.shade800,
                             ),
                           ),
                         ],
@@ -664,9 +838,11 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                     ),
                     const SizedBox(width: 10),
                     Tooltip(
-                      message: 'Pedidos Completados: ${driver.completedOrderCount} \nActivos: ${driver.activeOrderCount} \nPendiente de confirmar: ${driver.pendingConfirmationCount}',
+                      message:
+                          'Pedidos Completados: ${driver.completedOrderCount} \nActivos: ${driver.activeOrderCount} \nPendiente de confirmar: ${driver.pendingConfirmationCount}',
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.blue.shade50,
                           borderRadius: BorderRadius.circular(20),
@@ -675,7 +851,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.inventory_2_outlined, size: 14, color: Colors.blue.shade700),
+                            Icon(Icons.inventory_2_outlined,
+                                size: 14, color: Colors.blue.shade700),
                             const SizedBox(width: 4),
                             Text(
                               'Pedidos: ${driver.completedOrderCount} comp.',
@@ -756,7 +933,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
   }
 
   Widget _buildCompletedRoutesPane(List<RouteHistoryModel> routes) {
-    final completedRoutes = routes.where((r) => r.status == 'completed').toList();
+    final completedRoutes =
+        routes.where((r) => r.status == 'completed').toList();
 
     if (completedRoutes.isEmpty) {
       return const Center(
@@ -765,11 +943,13 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.history_toggle_off_rounded, size: 40, color: Colors.grey),
+              Icon(Icons.history_toggle_off_rounded,
+                  size: 40, color: Colors.grey),
               SizedBox(height: 12),
               Text(
                 'No hay histórico de rutas completadas',
-                style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey),
+                style:
+                    TextStyle(fontWeight: FontWeight.w500, color: Colors.grey),
               ),
             ],
           ),
@@ -807,23 +987,29 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
               shape: const Border(),
               title: Row(
                 children: [
-                  Icon(Icons.directions_car_filled_rounded, color: Colors.grey.shade700, size: 20),
+                  Icon(Icons.directions_car_filled_rounded,
+                      color: Colors.grey.shade700, size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Ruta: ${route.id.length > 8 ? route.id.substring(0, 8) : route.id}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14),
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: Colors.green.shade50,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       'Completada',
-                      style: TextStyle(color: Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          color: Colors.green.shade800,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold),
                     ),
                   )
                 ],
@@ -845,7 +1031,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                     children: [
                       Text(
                         'Conductor ID: ${route.driverId}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -861,20 +1048,26 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                         const SizedBox(height: 12),
                         const Text(
                           'Inspeccionar pedidos de la ruta:',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey),
                         ),
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: route.completedOrderIds.map((orderId) {
-                            final shortId = orderId.length > 8 ? orderId.substring(0, 8) : orderId;
+                            final shortId = orderId.length > 8
+                                ? orderId.substring(0, 8)
+                                : orderId;
                             return ActionChip(
                               label: Text(shortId),
                               backgroundColor: Colors.white,
                               avatar: const Icon(Icons.search, size: 12),
                               side: const BorderSide(color: AppTheme.primary),
-                              labelStyle: const TextStyle(color: AppTheme.primary, fontSize: 11),
+                              labelStyle: const TextStyle(
+                                  color: AppTheme.primary, fontSize: 11),
                               onPressed: () => _triggerSearch(orderId),
                             );
                           }).toList(),
@@ -892,8 +1085,6 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
   }
 
   Widget _buildAuditTimelinePane(List<RouteHistoryModel> routes) {
-
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -921,7 +1112,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Ingresa ID del Pedido completo...',
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(color: Colors.grey.shade300),
@@ -968,7 +1160,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('Obteniendo logs de auditoría...', style: TextStyle(color: Colors.grey)),
+            Text('Obteniendo logs de auditoría...',
+                style: TextStyle(color: Colors.grey)),
           ],
         ),
       );
@@ -981,7 +1174,9 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
           children: [
             const Icon(Icons.error_outline, color: Colors.red, size: 36),
             const SizedBox(height: 8),
-            Text(_searchError!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+            Text(_searchError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red)),
           ],
         ),
       );
@@ -1007,7 +1202,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
     final logs = _currentAuditLogs;
     if (logs == null || logs.isEmpty) {
       return const Center(
-        child: Text('No se encontraron registros de auditoría para este pedido'),
+        child:
+            Text('No se encontraron registros de auditoría para este pedido'),
       );
     }
 
@@ -1015,7 +1211,9 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
     final sortedLogs = List<AuditLogModel>.from(logs)
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-    final String shortOrderId = _selectedOrderId.length > 8 ? _selectedOrderId.substring(0, 8) : _selectedOrderId;
+    final String shortOrderId = _selectedOrderId.length > 8
+        ? _selectedOrderId.substring(0, 8)
+        : _selectedOrderId;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1023,7 +1221,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
             'Trazabilidad del Pedido: $shortOrderId',
-            style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.secondary),
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, color: AppTheme.secondary),
           ),
         ),
         Expanded(
@@ -1097,23 +1296,30 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                                 Expanded(
                                   child: Text(
                                     log.action,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13),
                                   ),
                                 ),
                                 Text(
                                   _formatTimestamp(log.timestamp),
-                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                                  style: TextStyle(
+                                      color: Colors.grey.shade500,
+                                      fontSize: 11),
                                 ),
                               ],
                             ),
-                            if (log.driverId != null && log.driverId!.isNotEmpty) ...[
+                            if (log.driverId != null &&
+                                log.driverId!.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
                                 'Repartidor: ${log.driverId}',
-                                style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+                                style: TextStyle(
+                                    color: Colors.grey.shade700, fontSize: 11),
                               ),
                             ],
-                            if (log.details != null && log.details!.isNotEmpty) ...[
+                            if (log.details != null &&
+                                log.details!.isNotEmpty) ...[
                               const SizedBox(height: 6),
                               Container(
                                 width: double.infinity,
@@ -1121,7 +1327,8 @@ class _CentralAnalyticsScreenState extends State<CentralAnalyticsScreen> {
                                 decoration: BoxDecoration(
                                   color: Colors.grey.shade100,
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: Colors.grey.shade200),
+                                  border:
+                                      Border.all(color: Colors.grey.shade200),
                                 ),
                                 child: Text(
                                   log.details!,

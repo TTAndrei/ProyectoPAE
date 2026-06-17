@@ -116,6 +116,7 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
 
   void _openOrderDetails(BuildContext context, OrderModel order) {
     final orderProv = context.read<OrderProvider>();
+    final driverProv = context.read<DriverProvider>();
     showDialog(
       context: context,
       builder: (dialogCtx) => OrderDetailsDialog(
@@ -128,6 +129,7 @@ class _DriverTasksScreenState extends State<DriverTasksScreen> {
               status: 'completed',
               actionLabel: order.type == 'pickup' ? 'recogido' : 'entregado',
             );
+            await driverProv.loadData();
             messenger.showSnackBar(
               SnackBar(
                 content: Text(

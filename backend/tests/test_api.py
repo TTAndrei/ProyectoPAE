@@ -68,12 +68,26 @@ async def test_yo_con_token(cliente, token_central):
 
 async def test_listar_pedidos_central(cliente, token_central):
     """La central debe poder ver todos los pedidos del sistema."""
+    crear = await cliente.post(
+        "/orders/",
+        json={
+            "type": "pickup",
+            "address": "Pedido listado prueba",
+            "lat": 40.42,
+            "lng": -3.7,
+        },
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert crear.status_code == 201
+    id_pedido = crear.json()["id"]
+
     respuesta = await cliente.get(
         "/orders/", headers={"Authorization": f"Bearer {token_central}"}
     )
     assert respuesta.status_code == 200
-    assert isinstance(respuesta.json(), list)
-    assert len(respuesta.json()) > 0
+    datos = respuesta.json()
+    assert isinstance(datos, list)
+    assert any(pedido["id"] == id_pedido for pedido in datos)
 
 
 async def test_crear_pedido_central(cliente, token_central):
@@ -87,6 +101,25 @@ async def test_crear_pedido_central(cliente, token_central):
     datos = respuesta.json()
     assert datos["type"] == "pickup"
     assert datos["status"] in ["pending", "assigned"]
+
+
+async def test_crear_pedido_respeta_repartidor_elegido(cliente, token_central):
+    """Si central elige un repartidor al crear, no debe autoasignar otro."""
+    respuesta = await cliente.post(
+        "/orders/",
+        json={
+            "type": "pickup",
+            "address": "Asignacion manual de prueba",
+            "lat": 40.42,
+            "lng": -3.7,
+            "driver_id": "driver-2",
+        },
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert respuesta.status_code == 201
+    datos = respuesta.json()
+    assert datos["status"] == "assigned"
+    assert datos["assigned_driver_id"] == "driver-2"
 
 
 async def test_crear_pedido_repartidor_prohibido(cliente, token_repartidor1):

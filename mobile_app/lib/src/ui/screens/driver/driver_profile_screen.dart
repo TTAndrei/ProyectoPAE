@@ -785,6 +785,9 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     final subtitle = kpis == null
         ? 'Calculando ratio de eficiencia de carga'
         : '${kpis.loadDistanceLabel} cargados, objetivo $target%';
+    final details = kpis == null
+        ? null
+        : 'Carga media ${kpis.averageLoadPackages.toStringAsFixed(2)} paq | Desvio ${kpis.averageInsertionDetourMinutes.toStringAsFixed(1)} min | Paq/km ${kpis.packagesPerKm.toStringAsFixed(2)} | Aceptacion ${(kpis.insertionAcceptanceRate * 100).toStringAsFixed(1)}%';
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -824,6 +827,18 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                     color: Colors.grey.shade600,
                   ),
                 ),
+                if (details != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    details,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -9,6 +9,22 @@ def obtener_resumen_flota(session, company_id: str) -> dict[str, Any]:
 
     total_dist = sum(d["total_distance_km"] for d in kpis_por_repartidor.values())
     loaded_dist = sum(d["loaded_distance_km"] for d in kpis_por_repartidor.values())
+    load_weighted_distance = sum(
+        d["load_weighted_distance"] for d in kpis_por_repartidor.values()
+    )
+    completed_orders = sum(d["completed_order_count"] for d in kpis_por_repartidor.values())
+    accepted_insertions = sum(
+        d["accepted_insertion_count"] for d in kpis_por_repartidor.values()
+    )
+    rejected_insertions = sum(
+        d["rejected_insertion_count"] for d in kpis_por_repartidor.values()
+    )
+    insertion_decisions = accepted_insertions + rejected_insertions
+    detour_values = [
+        d["average_insertion_detour_minutes"]
+        for d in kpis_por_repartidor.values()
+        if d["average_insertion_detour_minutes"] > 0
+    ]
 
     avg_efficiency = (loaded_dist / total_dist * 100.0) if total_dist > 0 else 0.0
 
@@ -18,7 +34,17 @@ def obtener_resumen_flota(session, company_id: str) -> dict[str, Any]:
         "average_load_efficiency_percent": round(avg_efficiency, 1),
         "total_active_orders": sum(d["active_order_count"] for d in kpis_por_repartidor.values()),
         "total_pending_confirmations": sum(d["pending_confirmation_count"] for d in kpis_por_repartidor.values()),
-        "total_completed_orders": sum(d["completed_order_count"] for d in kpis_por_repartidor.values()),
+        "total_completed_orders": completed_orders,
+        "average_load_packages": round(
+            load_weighted_distance / total_dist, 2
+        ) if total_dist > 0 else 0.0,
+        "average_insertion_detour_minutes": round(
+            sum(detour_values) / len(detour_values), 1
+        ) if detour_values else 0.0,
+        "packages_per_km": round(completed_orders / total_dist, 2) if total_dist > 0 else 0.0,
+        "insertion_acceptance_rate": round(
+            accepted_insertions / insertion_decisions, 4
+        ) if insertion_decisions else 0.0,
     }
 
 
@@ -47,6 +73,10 @@ def obtener_ranking_repartidores(session, company_id: str) -> list[dict[str, Any
             "active_order_count": kpis["active_order_count"],
             "pending_confirmation_count": kpis["pending_confirmation_count"],
             "completed_order_count": kpis["completed_order_count"],
+            "average_load_packages": kpis["average_load_packages"],
+            "average_insertion_detour_minutes": kpis["average_insertion_detour_minutes"],
+            "packages_per_km": kpis["packages_per_km"],
+            "insertion_acceptance_rate": kpis["insertion_acceptance_rate"],
             "meets_load_efficiency_target": kpis["meets_load_efficiency_target"],
         })
 

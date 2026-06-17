@@ -149,6 +149,10 @@ def test_analytics_and_route_history(aplicacion, base_de_datos_prueba):
             summary_data = summary_resp.json()
             assert "total_distance_km" in summary_data
             assert "average_load_efficiency_percent" in summary_data
+            assert "average_load_packages" in summary_data
+            assert "average_insertion_detour_minutes" in summary_data
+            assert "packages_per_km" in summary_data
+            assert "insertion_acceptance_rate" in summary_data
 
             # 7. Check Driver Performance Ranking Endpoint
             perf_resp = client.get(
@@ -161,6 +165,10 @@ def test_analytics_and_route_history(aplicacion, base_de_datos_prueba):
             driver_perf = next((d for d in perf_data if d["driver_id"] == driver_id), None)
             assert driver_perf is not None
             assert driver_perf["completed_order_count"] >= 1
+            assert "average_load_packages" in driver_perf
+            assert "average_insertion_detour_minutes" in driver_perf
+            assert "packages_per_km" in driver_perf
+            assert "insertion_acceptance_rate" in driver_perf
 
             # 8. Check Routes History Endpoint
             history_resp = client.get(

@@ -38,11 +38,21 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _centerOnDriver();
+      _centerOnKnownDriver();
     });
   }
 
-  Future<void> _centerOnDriver() async {
+  void _centerOnKnownDriver() {
+    final location = context.read<DriverProvider>().driverLocation;
+    if (location == null || !mounted) return;
+
+    _mapController.move(
+      LatLng(location.lat, location.lng),
+      14.5,
+    );
+  }
+
+  Future<void> _locateAndCenterOnDriver() async {
     final driverProv = context.read<DriverProvider>();
     try {
       final position = await driverProv.getCurrentLocation();
@@ -289,8 +299,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.pae.mobile',
               ),
               PolylineLayer(polylines: polylines),
@@ -402,7 +411,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _centerOnDriver,
+        onPressed: driverProv.isLocating ? null : _locateAndCenterOnDriver,
         backgroundColor: AppTheme.secondary,
         foregroundColor: Colors.white,
         tooltip: 'Centrar ubicación',
@@ -410,7 +419,16 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           margin: EdgeInsets.only(bottom: bottomOffset > 16 ? 0 : 0),
-          child: const Icon(Icons.my_location),
+          child: driverProv.isLocating
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.my_location),
         ),
       ),
       // Set the FAB location based on whether panel is showing
@@ -436,13 +454,16 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                     _mapController.move(LatLng(order.lat, order.lng), 15.5),
                 onComplete: () async {
                   final messenger = ScaffoldMessenger.of(context);
+                  final orderProv = context.read<OrderProvider>();
+                  final driverProv = context.read<DriverProvider>();
                   try {
-                    await context.read<OrderProvider>().updateOrderStatus(
-                          orderId: order.id,
-                          status: 'completed',
-                          actionLabel:
-                              order.type == 'pickup' ? 'recogido' : 'entregado',
-                        );
+                    await orderProv.updateOrderStatus(
+                      orderId: order.id,
+                      status: 'completed',
+                      actionLabel:
+                          order.type == 'pickup' ? 'recogido' : 'entregado',
+                    );
+                    await driverProv.loadData();
                     messenger.showSnackBar(
                       SnackBar(
                         content: Text(
@@ -736,13 +757,16 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
                     _mapController.move(LatLng(order.lat, order.lng), 15.5),
                 onComplete: () async {
                   final messenger = ScaffoldMessenger.of(context);
+                  final orderProv = context.read<OrderProvider>();
+                  final driverProv = context.read<DriverProvider>();
                   try {
-                    await context.read<OrderProvider>().updateOrderStatus(
-                          orderId: order.id,
-                          status: 'completed',
-                          actionLabel:
-                              order.type == 'pickup' ? 'recogido' : 'entregado',
-                        );
+                    await orderProv.updateOrderStatus(
+                      orderId: order.id,
+                      status: 'completed',
+                      actionLabel:
+                          order.type == 'pickup' ? 'recogido' : 'entregado',
+                    );
+                    await driverProv.loadData();
                     messenger.showSnackBar(
                       SnackBar(
                         content: Text(

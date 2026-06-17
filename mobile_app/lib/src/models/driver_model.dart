@@ -57,7 +57,8 @@ class DriverModel {
       isAvailable:
           json['is_available'] == null ? true : (json['is_available'] as bool),
       company: json['company'] != null
-          ? CompanyModel.fromJson(Map<String, dynamic>.from(json['company'] as Map))
+          ? CompanyModel.fromJson(
+              Map<String, dynamic>.from(json['company'] as Map))
           : null,
       kpis: DriverKpiModel.fromJson(json),
     );
@@ -74,6 +75,13 @@ class DriverKpiModel {
     required this.activeOrderCount,
     required this.pendingConfirmationCount,
     required this.completedOrderCount,
+    required this.averageLoadPackages,
+    required this.loadWeightedDistance,
+    required this.averageInsertionDetourMinutes,
+    required this.packagesPerKm,
+    required this.insertionAcceptanceRate,
+    required this.acceptedInsertionCount,
+    required this.rejectedInsertionCount,
     required this.targetLoadEfficiencyRatio,
     required this.meetsLoadEfficiencyTarget,
     required this.measurementNote,
@@ -87,6 +95,13 @@ class DriverKpiModel {
   final int activeOrderCount;
   final int pendingConfirmationCount;
   final int completedOrderCount;
+  final double averageLoadPackages;
+  final double loadWeightedDistance;
+  final double averageInsertionDetourMinutes;
+  final double packagesPerKm;
+  final double insertionAcceptanceRate;
+  final int acceptedInsertionCount;
+  final int rejectedInsertionCount;
   final double targetLoadEfficiencyRatio;
   final bool meetsLoadEfficiencyTarget;
   final String measurementNote;
@@ -111,6 +126,19 @@ class DriverKpiModel {
           (json['pending_confirmation_count'] as num?)?.toInt() ?? 0,
       completedOrderCount:
           (json['completed_order_count'] as num?)?.toInt() ?? 0,
+      averageLoadPackages:
+          _asNullableDouble(json['average_load_packages']) ?? 0.0,
+      loadWeightedDistance:
+          _asNullableDouble(json['load_weighted_distance']) ?? 0.0,
+      averageInsertionDetourMinutes:
+          _asNullableDouble(json['average_insertion_detour_minutes']) ?? 0.0,
+      packagesPerKm: _asNullableDouble(json['packages_per_km']) ?? 0.0,
+      insertionAcceptanceRate:
+          _asNullableDouble(json['insertion_acceptance_rate']) ?? 0.0,
+      acceptedInsertionCount:
+          (json['accepted_insertion_count'] as num?)?.toInt() ?? 0,
+      rejectedInsertionCount:
+          (json['rejected_insertion_count'] as num?)?.toInt() ?? 0,
       targetLoadEfficiencyRatio:
           _asNullableDouble(json['target_load_efficiency_ratio']) ?? 0.75,
       meetsLoadEfficiencyTarget: json['meets_load_efficiency_target'] == true,

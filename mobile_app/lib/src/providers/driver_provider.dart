@@ -56,6 +56,7 @@ class DriverProvider extends ChangeNotifier {
   Timer? _refreshTimer;
   Timer? _secondsTimer;
   bool _isLoading = false;
+  bool _isLocating = false;
   String? _error;
 
   DriverLocation? _driverLocation;
@@ -78,6 +79,7 @@ class DriverProvider extends ChangeNotifier {
   /// Stream that fires when WS events indicate orders should be refreshed.
   Stream<void> get wsRefreshStream => _wsRefreshController.stream;
   bool get isLoading => _isLoading;
+  bool get isLocating => _isLocating;
   String? get error => _error;
   DriverLocation? get driverLocation => _driverLocation;
   DriverKpiModel? get kpis => _kpis;
@@ -284,7 +286,7 @@ class DriverProvider extends ChangeNotifier {
 
   // ── Location ─────────────────────────────────────────────────────
   Future<Position?> getCurrentLocation() async {
-    _isLoading = true;
+    _isLocating = true;
     notifyListeners();
 
     try {
@@ -311,12 +313,17 @@ class DriverProvider extends ChangeNotifier {
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
         ),
+      ).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => throw TimeoutException(
+          'No se pudo obtener la ubicacion a tiempo.',
+        ),
       );
 
       await sendLocationDirect(position.latitude, position.longitude);
       return position;
     } finally {
-      _isLoading = false;
+      _isLocating = false;
       notifyListeners();
     }
   }

@@ -38,6 +38,10 @@ class DriverPerformanceModel {
     required this.activeOrderCount,
     required this.pendingConfirmationCount,
     required this.completedOrderCount,
+    required this.averageLoadPackages,
+    required this.averageInsertionDetourMinutes,
+    required this.packagesPerKm,
+    required this.insertionAcceptanceRate,
     required this.meetsLoadEfficiencyTarget,
   });
 
@@ -50,19 +54,34 @@ class DriverPerformanceModel {
   final int activeOrderCount;
   final int pendingConfirmationCount;
   final int completedOrderCount;
+  final double averageLoadPackages;
+  final double averageInsertionDetourMinutes;
+  final double packagesPerKm;
+  final double insertionAcceptanceRate;
   final bool meetsLoadEfficiencyTarget;
 
   factory DriverPerformanceModel.fromJson(Map<String, dynamic> json) {
     return DriverPerformanceModel(
       driverId: json['driver_id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
-      loadEfficiencyRatio: (json['load_efficiency_ratio'] as num?)?.toDouble() ?? 0.0,
-      loadEfficiencyPercent: (json['load_efficiency_percent'] as num?)?.toDouble() ?? 0.0,
+      loadEfficiencyRatio:
+          (json['load_efficiency_ratio'] as num?)?.toDouble() ?? 0.0,
+      loadEfficiencyPercent:
+          (json['load_efficiency_percent'] as num?)?.toDouble() ?? 0.0,
       loadedDistanceKm: (json['loaded_distance_km'] as num?)?.toDouble() ?? 0.0,
       totalDistanceKm: (json['total_distance_km'] as num?)?.toDouble() ?? 0.0,
       activeOrderCount: (json['active_order_count'] as num?)?.toInt() ?? 0,
-      pendingConfirmationCount: (json['pending_confirmation_count'] as num?)?.toInt() ?? 0,
-      completedOrderCount: (json['completed_order_count'] as num?)?.toInt() ?? 0,
+      pendingConfirmationCount:
+          (json['pending_confirmation_count'] as num?)?.toInt() ?? 0,
+      completedOrderCount:
+          (json['completed_order_count'] as num?)?.toInt() ?? 0,
+      averageLoadPackages:
+          (json['average_load_packages'] as num?)?.toDouble() ?? 0.0,
+      averageInsertionDetourMinutes:
+          (json['average_insertion_detour_minutes'] as num?)?.toDouble() ?? 0.0,
+      packagesPerKm: (json['packages_per_km'] as num?)?.toDouble() ?? 0.0,
+      insertionAcceptanceRate:
+          (json['insertion_acceptance_rate'] as num?)?.toDouble() ?? 0.0,
       meetsLoadEfficiencyTarget: json['meets_load_efficiency_target'] == true,
     );
   }
@@ -76,6 +95,10 @@ class FleetSummaryModel {
     required this.totalActiveOrders,
     required this.totalPendingConfirmations,
     required this.totalCompletedOrders,
+    required this.averageLoadPackages,
+    required this.averageInsertionDetourMinutes,
+    required this.packagesPerKm,
+    required this.insertionAcceptanceRate,
   });
 
   final double totalDistanceKm;
@@ -84,15 +107,29 @@ class FleetSummaryModel {
   final int totalActiveOrders;
   final int totalPendingConfirmations;
   final int totalCompletedOrders;
+  final double averageLoadPackages;
+  final double averageInsertionDetourMinutes;
+  final double packagesPerKm;
+  final double insertionAcceptanceRate;
 
   factory FleetSummaryModel.fromJson(Map<String, dynamic> json) {
     return FleetSummaryModel(
       totalDistanceKm: (json['total_distance_km'] as num?)?.toDouble() ?? 0.0,
       loadedDistanceKm: (json['loaded_distance_km'] as num?)?.toDouble() ?? 0.0,
-      averageLoadEfficiencyPercent: (json['average_load_efficiency_percent'] as num?)?.toDouble() ?? 0.0,
+      averageLoadEfficiencyPercent:
+          (json['average_load_efficiency_percent'] as num?)?.toDouble() ?? 0.0,
       totalActiveOrders: (json['total_active_orders'] as num?)?.toInt() ?? 0,
-      totalPendingConfirmations: (json['total_pending_confirmations'] as num?)?.toInt() ?? 0,
-      totalCompletedOrders: (json['total_completed_orders'] as num?)?.toInt() ?? 0,
+      totalPendingConfirmations:
+          (json['total_pending_confirmations'] as num?)?.toInt() ?? 0,
+      totalCompletedOrders:
+          (json['total_completed_orders'] as num?)?.toInt() ?? 0,
+      averageLoadPackages:
+          (json['average_load_packages'] as num?)?.toDouble() ?? 0.0,
+      averageInsertionDetourMinutes:
+          (json['average_insertion_detour_minutes'] as num?)?.toDouble() ?? 0.0,
+      packagesPerKm: (json['packages_per_km'] as num?)?.toDouble() ?? 0.0,
+      insertionAcceptanceRate:
+          (json['insertion_acceptance_rate'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -147,7 +184,9 @@ class RouteHistoryModel {
       id: json['id']?.toString() ?? '',
       driverId: json['driver_id']?.toString() ?? '',
       orderIds: rawOrderIds != null ? List<String>.from(rawOrderIds) : [],
-      completedOrderIds: rawCompletedOrderIds != null ? List<String>.from(rawCompletedOrderIds) : [],
+      completedOrderIds: rawCompletedOrderIds != null
+          ? List<String>.from(rawCompletedOrderIds)
+          : [],
       status: json['status']?.toString() ?? '',
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../models/driver_model.dart';
 import '../../../providers/central_provider.dart';
 import '../../../providers/order_provider.dart';
 import '../../../state/session_controller.dart';
@@ -121,11 +122,27 @@ class _CentralPageState extends State<CentralPage> {
   }
 
   Future<void> _openCreateOrderDialog() async {
+    final centralProv = context.read<CentralProvider>();
+    if (centralProv.drivers.isEmpty) {
+      await centralProv.loadDrivers();
+      if (!mounted) return;
+    }
+
+    final drivers = context.read<CentralProvider>().drivers;
+    if (drivers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay conductores disponibles para asignar'),
+        ),
+      );
+      return;
+    }
+
     final orderProv = context.read<OrderProvider>();
 
     final draft = await showDialog<_CreateOrderDraft>(
       context: context,
-      builder: (_) => const _CreateOrderDialog(),
+      builder: (_) => _CreateOrderDialog(drivers: drivers),
     );
     if (draft == null) return;
 
@@ -151,6 +168,7 @@ class _CentralPageState extends State<CentralPage> {
       await orderProv.createOrder(
         type: draft.type,
         name: draft.name,
+        driverId: draft.driverId,
         address: draft.address,
         lat: selectedCandidate.lat,
         lng: selectedCandidate.lng,
@@ -749,7 +767,9 @@ class _CentralPageState extends State<CentralPage> {
 // ── Create Order Dialog Draft ────────────────────────────────────────
 
 class _CreateOrderDialog extends StatefulWidget {
-  const _CreateOrderDialog();
+  const _CreateOrderDialog({required this.drivers});
+
+  final List<DriverModel> drivers;
 
   @override
   State<_CreateOrderDialog> createState() => _CreateOrderDialogState();
@@ -773,6 +793,7 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
   String _selectedType = 'pickup';
   String _selectedIncoterm = 'EXW';
   String? _selectedTipoBulto;
+  String? _selectedDriverId;
   bool _esAdr = false;
 
   @override
@@ -891,6 +912,38 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                       ),
                     ),
                   ],
+                ),
+                _buildSectionHeader('Conductor', Icons.local_shipping_outlined),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedDriverId,
+                  decoration: const InputDecoration(
+                    labelText: 'Conductor asignado *',
+                    hintText: 'Selecciona un conductor',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: widget.drivers
+                      .map(
+                        (driver) => DropdownMenuItem<String>(
+                          value: driver.id,
+                          child: Text(driver.name),
+                        ),
+                      )
+                      .toList(),
+                  validator: (value) {
+                    if (widget.drivers.isEmpty ||
+                        value == null ||
+                        value.isEmpty) {
+                      return 'Selecciona un conductor disponible';
+                    }
+                    return null;
+                  },
+                  onChanged: widget.drivers.isEmpty
+                      ? null
+                      : (value) {
+                          setState(() {
+                            _selectedDriverId = value;
+                          });
+                        },
                 ),
                 _buildSectionHeader(
                     'Datos de Envío', Icons.inventory_2_outlined),
@@ -1133,6 +1186,7 @@ class _CreateOrderDialogState extends State<_CreateOrderDialog> {
                     ? null
                     : _nameController.text.trim(),
                 address: _addressController.text.trim(),
+                driverId: _selectedDriverId!,
                 incoterm: _selectedIncoterm,
                 origen: _origenController.text.trim().isEmpty
                     ? null
@@ -1176,6 +1230,7 @@ class _CreateOrderDraft {
   const _CreateOrderDraft({
     required this.type,
     required this.address,
+    required this.driverId,
     this.name,
     this.incoterm,
     this.origen,
@@ -1195,6 +1250,7 @@ class _CreateOrderDraft {
   final String type;
   final String? name;
   final String address;
+  final String driverId;
   final String? incoterm;
   final String? origen;
   final String? destino;

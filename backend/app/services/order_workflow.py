@@ -257,6 +257,8 @@ def _asignar_en_session(
             o.estimated_extra_minutes = $minutos,
             o.candidate_driver_ids = $candidate_ids,
             o.current_candidate_idx = 0,
+            o.completed_by_driver_id = null,
+            o.completed_at = null,
             o.updated_at = datetime()
         MERGE (u)-[:ASSIGNED_TO]->(o)
         """,
@@ -338,11 +340,32 @@ async def crear_pedido(cuerpo: CrearPedido, company_id: str) -> dict:
 
         pedido_base = {"lat": cuerpo.lat, "lng": cuerpo.lng}
         candidatos = _calcular_candidatos(session, id_pedido, pedido_base)
-        candidate_ids = [c["driver_id"] for c in candidatos]
+        if cuerpo.driver_id:
+            candidate_ids = [cuerpo.driver_id] + [
+                c["driver_id"] for c in candidatos if c["driver_id"] != cuerpo.driver_id
+            ]
+        else:
+            candidate_ids = [c["driver_id"] for c in candidatos]
         assigned_driver_id = None
         minutos_extra = 0.0
 
-        if candidate_ids:
+        if cuerpo.driver_id:
+            assigned_driver_id = cuerpo.driver_id
+            minutos_extra = _calcular_extra_manual(
+                session,
+                id_pedido,
+                assigned_driver_id,
+                pedido_base,
+            )
+            resp, _, _ = _asignar_en_session(
+                session,
+                id_pedido,
+                assigned_driver_id,
+                minutos_extra,
+                candidate_ids,
+            )
+            registrar_evento_auditoria(session, id_pedido, 'assign', driver_id=assigned_driver_id, details=f"Asignado manualmente desde creacion con {minutos_extra} min extra")
+        elif candidate_ids:
             assigned_driver_id = candidate_ids[0]
             minutos_extra = next(
                 c["extra_minutos"] for c in candidatos if c["driver_id"] == assigned_driver_id
@@ -574,18 +597,34 @@ def actualizar_estado_pedido(id_pedido: str, status: str, usuario_actual: dict) 
         if usuario_actual["role"] == "repartidor" and driver_id != usuario_actual["id"]:
             raise HTTPException(status_code=403, detail="Este pedido no esta asignado a ti")
 
-        session.run(
-            "MATCH (o:Order {id: $oid}) SET o.status = $status, o.updated_at = datetime()",
-            {"oid": id_pedido, "status": status},
-        )
-
         if status == "completed" and driver_id:
             session.run(
                 """
+                MATCH (o:Order {id: $oid})
+                SET o.status = $status,
+                    o.completed_by_driver_id = $uid,
+                    o.completed_at = datetime(),
+                    o.updated_at = datetime()
+                WITH o
                 MATCH (u:User {id: $uid})-[:HAS_ROUTE]->(r:Route {status: 'active'})
-                SET r.completed_order_ids = coalesce(r.completed_order_ids, []) + [$oid]
+                WITH r, coalesce(r.completed_order_ids, []) AS completed_ids
+                SET r.completed_order_ids = CASE
+                    WHEN $oid IN completed_ids THEN completed_ids
+                    ELSE completed_ids + [$oid]
+                END
                 """,
-                {"uid": driver_id, "oid": id_pedido}
+                {"uid": driver_id, "oid": id_pedido, "status": status}
+            )
+        else:
+            session.run(
+                """
+                MATCH (o:Order {id: $oid})
+                SET o.status = $status,
+                    o.completed_by_driver_id = null,
+                    o.completed_at = null,
+                    o.updated_at = datetime()
+                """,
+                {"oid": id_pedido, "status": status},
             )
 
         action_name = "start_delivery" if status == "in_progress" else "complete"

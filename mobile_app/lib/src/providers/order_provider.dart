@@ -135,6 +135,7 @@ class OrderProvider extends ChangeNotifier {
   Future<OrderModel> createOrder({
     required String type,
     String? name,
+    required String driverId,
     required String address,
     required double lat,
     required double lng,
@@ -161,6 +162,7 @@ class OrderProvider extends ChangeNotifier {
         input: CreateOrderInput(
           type: type,
           name: name,
+          driverId: driverId,
           address: address,
           lat: lat,
           lng: lng,

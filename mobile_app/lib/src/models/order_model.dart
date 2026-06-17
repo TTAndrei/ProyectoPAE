@@ -106,6 +106,7 @@ class CreateOrderInput {
     required this.address,
     required this.lat,
     required this.lng,
+    required this.driverId,
     this.name,
     this.incoterm,
     this.origen,
@@ -124,6 +125,7 @@ class CreateOrderInput {
 
   final String type;
   final String? name;
+  final String driverId;
   final String address;
   final double lat;
   final double lng;
@@ -145,6 +147,7 @@ class CreateOrderInput {
     return {
       'type': type,
       if (name != null && name!.isNotEmpty) 'name': name,
+      'driver_id': driverId,
       'address': address,
       'lat': lat,
       'lng': lng,
@@ -152,15 +155,21 @@ class CreateOrderInput {
       if (origen != null && origen!.isNotEmpty) 'origen': origen,
       if (destino != null && destino!.isNotEmpty) 'destino': destino,
       if (tipoBulto != null && tipoBulto!.isNotEmpty) 'tipo_bulto': tipoBulto,
-      if (dimensiones != null && dimensiones!.isNotEmpty) 'dimensiones': dimensiones,
+      if (dimensiones != null && dimensiones!.isNotEmpty)
+        'dimensiones': dimensiones,
       if (peso != null) 'peso': peso,
       'es_adr': esAdr,
       if (adrTipo != null && adrTipo!.isNotEmpty) 'adr_tipo': adrTipo,
-      if (adrCodigoUn != null && adrCodigoUn!.isNotEmpty) 'adr_codigo_un': adrCodigoUn,
-      if (clienteNombre != null && clienteNombre!.isNotEmpty) 'cliente_nombre': clienteNombre,
-      if (clienteContacto != null && clienteContacto!.isNotEmpty) 'cliente_contacto': clienteContacto,
-      if (destinatarioNombre != null && destinatarioNombre!.isNotEmpty) 'destinatario_nombre': destinatarioNombre,
-      if (destinatarioContacto != null && destinatarioContacto!.isNotEmpty) 'destinatario_contacto': destinatarioContacto,
+      if (adrCodigoUn != null && adrCodigoUn!.isNotEmpty)
+        'adr_codigo_un': adrCodigoUn,
+      if (clienteNombre != null && clienteNombre!.isNotEmpty)
+        'cliente_nombre': clienteNombre,
+      if (clienteContacto != null && clienteContacto!.isNotEmpty)
+        'cliente_contacto': clienteContacto,
+      if (destinatarioNombre != null && destinatarioNombre!.isNotEmpty)
+        'destinatario_nombre': destinatarioNombre,
+      if (destinatarioContacto != null && destinatarioContacto!.isNotEmpty)
+        'destinatario_contacto': destinatarioContacto,
     };
   }
 }

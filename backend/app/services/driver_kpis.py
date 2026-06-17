@@ -6,8 +6,9 @@ from app.routing import distancia_haversine_km
 
 LOAD_EFFICIENCY_TARGET = 0.75
 LOAD_EFFICIENCY_NOTE = (
-    "Ratio calculado como km hacia pedidos delivery / km totales de la ruta activa. "
-    "El modelo actual no guarda pares pickup-delivery ni capacidad de vehiculo."
+    "Ratio calculado tramo a tramo: km con al menos un paquete a bordo / km totales. "
+    "Sin pares pickup-delivery, cada delivery cuenta como paquete ya cargado y cada pickup "
+    "suma un paquete despues de la recogida."
 )
 
 
@@ -23,9 +24,18 @@ def _order_route_stops(orders: list[dict[str, Any]], route_order_ids: list[str])
     return ordered
 
 
-def _route_distances(driver: dict[str, Any], active_orders: list[dict[str, Any]]) -> tuple[float, float]:
+def _package_count(_order: dict[str, Any]) -> int:
+    return 1
+
+
+def _route_load_metrics(driver: dict[str, Any], active_orders: list[dict[str, Any]]) -> dict[str, float]:
     if not active_orders:
-        return 0.0, 0.0
+        return {
+            "loaded_distance_km": 0.0,
+            "total_distance_km": 0.0,
+            "load_weighted_distance": 0.0,
+            "average_load_packages": 0.0,
+        }
 
     current_lat = driver.get("lat")
     current_lng = driver.get("lng")
@@ -35,6 +45,13 @@ def _route_distances(driver: dict[str, Any], active_orders: list[dict[str, Any]]
 
     total_km = 0.0
     loaded_km = 0.0
+    load_weighted_distance = 0.0
+    packages_on_board = sum(
+        _package_count(order)
+        for order in active_orders
+        if order.get("type") == "delivery"
+    )
+
     for order in active_orders:
         leg_km = distancia_haversine_km(
             float(current_lat),
@@ -43,12 +60,72 @@ def _route_distances(driver: dict[str, Any], active_orders: list[dict[str, Any]]
             float(order["lng"]),
         )
         total_km += leg_km
-        if order.get("type") == "delivery":
+        if packages_on_board > 0:
             loaded_km += leg_km
+        load_weighted_distance += leg_km * packages_on_board
+
+        package_count = _package_count(order)
+        if order.get("type") == "delivery":
+            packages_on_board = max(0, packages_on_board - package_count)
+        elif order.get("type") == "pickup":
+            packages_on_board += package_count
+
         current_lat = order["lat"]
         current_lng = order["lng"]
 
-    return loaded_km, total_km
+    return {
+        "loaded_distance_km": loaded_km,
+        "total_distance_km": total_km,
+        "load_weighted_distance": load_weighted_distance,
+        "average_load_packages": (
+            load_weighted_distance / total_km if total_km > 0 else 0.0
+        ),
+    }
+
+
+def _operational_stats(session, id_repartidor: str) -> dict[str, Any]:
+    record = session.run(
+        """
+        MATCH (u:User {id: $id, role: 'repartidor'})
+        OPTIONAL MATCH (u)-[:ASSIGNED_TO]->(o:Order)
+        WITH [m IN collect(o.estimated_extra_minutes) WHERE m IS NOT NULL] AS extra_minutes
+        OPTIONAL MATCH (event:AuditEvent {driver_id: $id})
+        WITH extra_minutes, collect(event.action) AS actions
+        RETURN extra_minutes,
+               size([a IN actions WHERE a = 'accept']) AS accepted_count,
+               size([a IN actions WHERE a = 'reject']) AS rejected_count
+        """,
+        {"id": id_repartidor},
+    ).single()
+    if not record:
+        return {
+            "average_insertion_detour_minutes": 0.0,
+            "accepted_insertion_count": 0,
+            "rejected_insertion_count": 0,
+            "insertion_acceptance_rate": 0.0,
+        }
+
+    extra_minutes = [
+        float(value)
+        for value in (record["extra_minutes"] or [])
+        if value is not None
+    ]
+    accepted = int(record["accepted_count"] or 0)
+    rejected = int(record["rejected_count"] or 0)
+    decisions = accepted + rejected
+
+    return {
+        "average_insertion_detour_minutes": round(
+            sum(extra_minutes) / len(extra_minutes), 1
+        )
+        if extra_minutes
+        else 0.0,
+        "accepted_insertion_count": accepted,
+        "rejected_insertion_count": rejected,
+        "insertion_acceptance_rate": round(accepted / decisions, 4)
+        if decisions
+        else 0.0,
+    }
 
 
 def calcular_kpis_repartidor(session, id_repartidor: str) -> dict[str, Any] | None:
@@ -61,7 +138,14 @@ def calcular_kpis_repartidor(session, id_repartidor: str) -> dict[str, Any] | No
         WITH u, r, collect(DISTINCT active {
             .id, .type, .lat, .lng, .status
         }) AS active_orders
-        OPTIONAL MATCH (u)-[:ASSIGNED_TO]->(completed:Order {status: 'completed'})
+        OPTIONAL MATCH (completed:Order {status: 'completed'})
+        WHERE completed.completed_by_driver_id = u.id
+           OR (
+               completed.completed_by_driver_id IS NULL
+               AND EXISTS {
+                   MATCH (u)-[:ASSIGNED_TO]->(completed)
+               }
+           )
         RETURN u.id AS driver_id,
                u.lat AS lat,
                u.lng AS lng,
@@ -78,9 +162,13 @@ def calcular_kpis_repartidor(session, id_repartidor: str) -> dict[str, Any] | No
         list(record["active_orders"] or []),
         list(record["route_order_ids"] or []),
     )
-    loaded_km, total_km = _route_distances(dict(record), active_orders)
+    load_metrics = _route_load_metrics(dict(record), active_orders)
+    loaded_km = load_metrics["loaded_distance_km"]
+    total_km = load_metrics["total_distance_km"]
     ratio = loaded_km / total_km if total_km > 0 else 0.0
     pending_count = sum(1 for order in active_orders if order.get("status") == "assigned")
+    completed_count = int(record["completed_order_count"] or 0)
+    operational_stats = _operational_stats(session, id_repartidor)
 
     return {
         "driver_id": record["driver_id"],
@@ -90,7 +178,14 @@ def calcular_kpis_repartidor(session, id_repartidor: str) -> dict[str, Any] | No
         "total_distance_km": _round_km(total_km),
         "active_order_count": len(active_orders),
         "pending_confirmation_count": pending_count,
-        "completed_order_count": int(record["completed_order_count"] or 0),
+        "completed_order_count": completed_count,
+        "average_load_packages": round(load_metrics["average_load_packages"], 2),
+        "load_weighted_distance": _round_km(load_metrics["load_weighted_distance"]),
+        "average_insertion_detour_minutes": operational_stats["average_insertion_detour_minutes"],
+        "packages_per_km": round(completed_count / total_km, 2) if total_km > 0 else 0.0,
+        "insertion_acceptance_rate": operational_stats["insertion_acceptance_rate"],
+        "accepted_insertion_count": operational_stats["accepted_insertion_count"],
+        "rejected_insertion_count": operational_stats["rejected_insertion_count"],
         "target_load_efficiency_ratio": LOAD_EFFICIENCY_TARGET,
         "meets_load_efficiency_target": ratio >= LOAD_EFFICIENCY_TARGET,
         "measurement_note": LOAD_EFFICIENCY_NOTE,

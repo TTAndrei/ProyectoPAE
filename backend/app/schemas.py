@@ -51,6 +51,7 @@ class CrearPedido(BaseModel):
     lat: float
     lng: float
     name: Optional[str] = None
+    driver_id: Optional[str] = None
     incoterm: Optional[str] = None
     origen: Optional[str] = None
     destino: Optional[str] = None
@@ -152,6 +153,13 @@ class RepartidorRespuesta(BaseModel):
     active_order_count: int = 0
     pending_confirmation_count: int = 0
     completed_order_count: int = 0
+    average_load_packages: float = 0.0
+    load_weighted_distance: float = 0.0
+    average_insertion_detour_minutes: float = 0.0
+    packages_per_km: float = 0.0
+    insertion_acceptance_rate: float = 0.0
+    accepted_insertion_count: int = 0
+    rejected_insertion_count: int = 0
     target_load_efficiency_ratio: float = 0.75
     meets_load_efficiency_target: bool = False
     measurement_note: str = ""
@@ -166,6 +174,13 @@ class DriverKpiResponse(BaseModel):
     active_order_count: int = 0
     pending_confirmation_count: int = 0
     completed_order_count: int = 0
+    average_load_packages: float = 0.0
+    load_weighted_distance: float = 0.0
+    average_insertion_detour_minutes: float = 0.0
+    packages_per_km: float = 0.0
+    insertion_acceptance_rate: float = 0.0
+    accepted_insertion_count: int = 0
+    rejected_insertion_count: int = 0
     target_load_efficiency_ratio: float = 0.75
     meets_load_efficiency_target: bool = False
     measurement_note: str = ""
@@ -225,6 +240,10 @@ class RendimientoRepartidorRespuesta(BaseModel):
     active_order_count: int
     pending_confirmation_count: int
     completed_order_count: int
+    average_load_packages: float = 0.0
+    average_insertion_detour_minutes: float = 0.0
+    packages_per_km: float = 0.0
+    insertion_acceptance_rate: float = 0.0
     meets_load_efficiency_target: bool
 
 
@@ -235,6 +254,10 @@ class AnaliticasFlotaRespuesta(BaseModel):
     total_active_orders: int
     total_pending_confirmations: int
     total_completed_orders: int
+    average_load_packages: float = 0.0
+    average_insertion_detour_minutes: float = 0.0
+    packages_per_km: float = 0.0
+    insertion_acceptance_rate: float = 0.0
 
 
 class RutaHistoricaRespuesta(BaseModel):
