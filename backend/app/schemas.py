@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class SolicitudLogin(BaseModel):
@@ -185,6 +185,21 @@ class DriverKpiResponse(BaseModel):
     meets_load_efficiency_target: bool = False
     measurement_note: str = ""
 
+
+class SimulationStatusResponse(BaseModel):
+    id: str
+    status: str
+    current_index: int = 0
+    total_stops: int = 20
+    driver_id: str = "driver-demo"
+    current_stop: Optional[PedidoRespuesta] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    error: Optional[str] = None
+    comparison: Optional[dict] = None
+    events: list[dict] = Field(default_factory=list)
+    kpis: DriverKpiResponse
+
 class RutaRespuesta(BaseModel):
     id: str
     driver_id: str
@@ -272,4 +287,3 @@ class RutaHistoricaRespuesta(BaseModel):
     total_distance_km: float = 0.0
     route_geometry: list[dict[str, float]] = []
     leg_minutes: list[float] = []
-

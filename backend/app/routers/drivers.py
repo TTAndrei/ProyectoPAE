@@ -12,6 +12,7 @@ from app.schemas import (
 )
 from app.auth import obtener_usuario_actual, requerir_central, requerir_repartidor, obtener_id_compania
 from app.services.driver_kpis import calcular_kpis_repartidor, listar_kpis_repartidores
+from app.services.order_workflow import persistir_metricas_ruta, plan_ruta_repartidor
 
 enrutador = APIRouter(prefix="/drivers", tags=["repartidores"])
 
@@ -101,13 +102,30 @@ def actualizar_ubicacion_repartidor(
     cuerpo: ActualizarUbicacion,
     usuario_actual: dict = Depends(obtener_usuario_actual),
 ):
-    if usuario_actual.get("role") != "repartidor" or usuario_actual.get("id") != id_repartidor:
+    es_propio_repartidor = (
+        usuario_actual.get("role") == "repartidor"
+        and usuario_actual.get("id") == id_repartidor
+    )
+    es_central = usuario_actual.get("role") == "central"
+    if not es_propio_repartidor and not es_central:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo puedes actualizar tu propia ubicación",
+            detail="No puedes actualizar esta ubicación",
         )
 
     with obtener_conexion() as session:
+        if es_central:
+            company_id = obtener_id_compania(usuario_actual)
+            existe = session.run(
+                """
+                MATCH (u:User {id: $id, role: 'repartidor'})-[:BELONGS_TO]->(:Company {id: $company_id})
+                RETURN u.id AS id
+                """,
+                {"id": id_repartidor, "company_id": company_id},
+            ).single()
+            if not existe:
+                raise HTTPException(status_code=404, detail="Repartidor no encontrado")
+
         session.run("""
             MATCH (u:User {id: $id})
             SET u.lat = $lat, u.lng = $lng, u.heading = $heading,
@@ -118,6 +136,64 @@ def actualizar_ubicacion_repartidor(
             "lng": cuerpo.lng,
             "heading": cuerpo.heading,
         })
+        plan = plan_ruta_repartidor(session, id_repartidor)
+        persistir_metricas_ruta(session, id_repartidor, plan)
+    return {"success": True}
+
+
+@enrutador.delete("/{id_repartidor}")
+def eliminar_repartidor(
+    id_repartidor: str,
+    usuario_actual: dict = Depends(requerir_central),
+):
+    company_id = obtener_id_compania(usuario_actual)
+    with obtener_conexion() as session:
+        existe = session.run(
+            """
+            MATCH (u:User {id: $id, role: 'repartidor'})-[:BELONGS_TO]->(:Company {id: $company_id})
+            RETURN u.id AS id
+            """,
+            {"id": id_repartidor, "company_id": company_id},
+        ).single()
+        if not existe:
+            raise HTTPException(status_code=404, detail="Repartidor no encontrado")
+
+        session.run(
+            """
+            MATCH (u:User {id: $id})-[rel:ASSIGNED_TO]->(o:Order)
+            WHERE o.status IN ['assigned', 'in_progress']
+            DELETE rel
+            SET o.status = 'pending',
+                o.estimated_extra_minutes = null,
+                o.candidate_driver_ids = [],
+                o.current_candidate_idx = -1,
+                o.completed_by_driver_id = null,
+                o.completed_at = null,
+                o.updated_at = datetime()
+            """,
+            {"id": id_repartidor},
+        )
+        session.run(
+            """
+            MATCH (u:User {id: $id})-[:HAS_ROUTE]->(r:Route)
+            DETACH DELETE r
+            """,
+            {"id": id_repartidor},
+        )
+        session.run(
+            """
+            MATCH (u:User {id: $id})-[:HAS_JORNADA]->(j:Jornada)
+            DETACH DELETE j
+            """,
+            {"id": id_repartidor},
+        )
+        session.run(
+            """
+            MATCH (u:User {id: $id})
+            DETACH DELETE u
+            """,
+            {"id": id_repartidor},
+        )
     return {"success": True}
 
 

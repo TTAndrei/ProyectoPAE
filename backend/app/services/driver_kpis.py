@@ -150,6 +150,7 @@ def calcular_kpis_repartidor(session, id_repartidor: str) -> dict[str, Any] | No
                u.lat AS lat,
                u.lng AS lng,
                coalesce(r.order_ids, []) AS route_order_ids,
+               coalesce(r.simulation_traveled_km, 0.0) AS simulation_traveled_km,
                [o IN active_orders WHERE o.id IS NOT NULL] AS active_orders,
                count(DISTINCT completed) AS completed_order_count
         """,
@@ -163,6 +164,14 @@ def calcular_kpis_repartidor(session, id_repartidor: str) -> dict[str, Any] | No
         list(record["route_order_ids"] or []),
     )
     load_metrics = _route_load_metrics(dict(record), active_orders)
+    simulation_traveled_km = float(record["simulation_traveled_km"] or 0.0)
+    if not active_orders and simulation_traveled_km > 0:
+        load_metrics = {
+            "loaded_distance_km": simulation_traveled_km,
+            "total_distance_km": simulation_traveled_km,
+            "load_weighted_distance": simulation_traveled_km,
+            "average_load_packages": 1.0,
+        }
     loaded_km = load_metrics["loaded_distance_km"]
     total_km = load_metrics["total_distance_km"]
     ratio = loaded_km / total_km if total_km > 0 else 0.0

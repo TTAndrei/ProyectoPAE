@@ -5,6 +5,7 @@ import 'services/api_client.dart';
 import 'services/driver_service.dart';
 import 'services/order_service.dart';
 import 'services/route_service.dart';
+import 'services/simulation_service.dart';
 import 'state/session_controller.dart';
 import 'theme/app_theme.dart';
 import 'ui/screens/home_page.dart';
@@ -18,6 +19,7 @@ class PaeMobileApp extends StatelessWidget {
     required this.orderService,
     required this.driverService,
     required this.routeService,
+    required this.simulationService,
   });
 
   final ApiClient apiClient;
@@ -25,6 +27,7 @@ class PaeMobileApp extends StatelessWidget {
   final OrderService orderService;
   final DriverService driverService;
   final RouteService routeService;
+  final SimulationService simulationService;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +37,7 @@ class PaeMobileApp extends StatelessWidget {
         Provider<OrderService>.value(value: orderService),
         Provider<DriverService>.value(value: driverService),
         Provider<RouteService>.value(value: routeService),
+        Provider<SimulationService>.value(value: simulationService),
         ChangeNotifierProvider<SessionController>.value(
           value: sessionController,
         ),

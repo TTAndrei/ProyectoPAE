@@ -45,6 +45,32 @@ class DriverModel {
     return '${lat!.toStringAsFixed(5)}, ${lng!.toStringAsFixed(5)}';
   }
 
+  DriverModel copyWith({
+    String? id,
+    String? username,
+    String? name,
+    double? lat,
+    double? lng,
+    double? heading,
+    String? locationUpdatedAt,
+    bool? isAvailable,
+    CompanyModel? company,
+    DriverKpiModel? kpis,
+  }) {
+    return DriverModel(
+      id: id ?? this.id,
+      username: username ?? this.username,
+      name: name ?? this.name,
+      lat: lat ?? this.lat,
+      lng: lng ?? this.lng,
+      heading: heading ?? this.heading,
+      locationUpdatedAt: locationUpdatedAt ?? this.locationUpdatedAt,
+      isAvailable: isAvailable ?? this.isAvailable,
+      company: company ?? this.company,
+      kpis: kpis ?? this.kpis,
+    );
+  }
+
   factory DriverModel.fromJson(Map<String, dynamic> json) {
     return DriverModel(
       id: json['id']?.toString() ?? '',

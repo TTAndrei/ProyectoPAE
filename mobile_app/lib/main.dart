@@ -9,11 +9,16 @@ import 'src/services/auth_store.dart';
 import 'src/services/driver_service.dart';
 import 'src/services/order_service.dart';
 import 'src/services/route_service.dart';
+import 'src/services/simulation_service.dart';
 import 'src/state/session_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // .env is optional; --dart-define=API_BASE_URL is preferred for builds.
+  }
   // ── Services ───────────────────────────────────────────────────
   final apiClient = ApiClient(baseUrl: AppConfig.apiBaseUrl);
   final authStore = AuthStore();
@@ -25,6 +30,7 @@ Future<void> main() async {
   final orderService = OrderService(apiClient: apiClient);
   final driverService = DriverService(apiClient: apiClient);
   final routeService = RouteService(apiClient: apiClient);
+  final simulationService = SimulationService(apiClient: apiClient);
 
   // ── Session ────────────────────────────────────────────────────
   final sessionController = SessionController(authService: authService);
@@ -38,6 +44,7 @@ Future<void> main() async {
       orderService: orderService,
       driverService: driverService,
       routeService: routeService,
+      simulationService: simulationService,
     ),
   );
 }

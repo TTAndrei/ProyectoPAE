@@ -27,6 +27,8 @@ extra usando insercion optima sobre la ruta activa.
 
 ### Modo automatico (recomendado para demo rapida)
 
+#### Windows
+
 Desde la raiz de `ProyectoPAE`:
 
 ```powershell
@@ -56,6 +58,57 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-demo.ps1 -NoLaunch
 
 # Detener toda la sesion automatizada
 powershell -ExecutionPolicy Bypass -File .\scripts\stop-demo.ps1
+```
+
+#### Ubuntu/Linux
+
+El flujo Linux usa Flutter Web y no modifica los scripts Windows. Necesita una
+instancia local de Neo4j iniciada y escuchando por Bolt en `127.0.0.1:7687`
+salvo que definas `NEO4J_URI`.
+
+Preparar dependencias:
+
+```bash
+bash scripts/setup-linux.sh
+```
+
+Este comando crea `backend/.venv`, instala `backend/requirements.txt`, detecta
+Flutter en PATH o lo instala en `~/.local/share/flutter`, ejecuta
+`flutter pub get` y verifica Neo4j por TCP. Neo4j se instala y arranca por
+separado; en Ubuntu puedes seguir:
+<https://neo4j.com/docs/operations-manual/current/installation/linux/debian/>.
+
+Arrancar la demo:
+
+```bash
+bash scripts/start-demo-linux.sh --force-restart
+```
+
+Arrancar servicios sin abrir navegador:
+
+```bash
+bash scripts/start-demo-linux.sh --no-launch
+```
+
+Detener:
+
+```bash
+bash scripts/stop-demo-linux.sh
+```
+
+Valores por defecto:
+
+- API usada en Flutter Web: `http://localhost:8000`
+- Backend: `http://127.0.0.1:8000`
+- Frontend: `http://localhost:8081`
+- Estado: `scripts/.demo-state-linux.json`
+- Logs: `scripts/.demo-logs/`
+
+Opciones utiles:
+
+```bash
+bash scripts/start-demo-linux.sh --api-base-url http://localhost:8000
+bash scripts/start-demo-linux.sh --backend-port 8000 --frontend-port 8081
 ```
 
 ### Backend
@@ -161,9 +214,10 @@ pytest -v
 | Variable | Valor por defecto | Uso |
 | -------- | ----------------- | --- |
 | `SECRET_KEY` | `pae_dev_secret_cambiar_en_produccion` | Firma JWT |
-| `NEO4J_URI` | `neo4j://127.0.0.1:7687` | URI de Neo4j |
+| `NEO4J_URI` | `bolt://127.0.0.1:7687` | URI de Neo4j |
 | `NEO4J_USER` | `neo4j` | Usuario Neo4j |
 | `NEO4J_PASSWORD` | `12345678` | Contrasena Neo4j |
+| `NEO4J_DATABASE` | `neo4j` | Base de datos Neo4j |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080` | Origenes permitidos |
 
 ## 9) Endpoints API

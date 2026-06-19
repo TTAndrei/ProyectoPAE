@@ -5,6 +5,11 @@ from app.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DATABASE
 contexto_contrasena = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _driver = None
 
+DEMO_DRIVER_ID = "driver-demo"
+DEMO_DRIVER_USERNAME = "drivertest"
+DEMO_DRIVER_FALLBACK_USERNAME = "driverdemo"
+DEMO_DRIVER_PASSWORD = "driver123"
+
 
 def obtener_driver():
     global _driver
@@ -35,6 +40,7 @@ def inicializar_bd():
         session.run("CREATE CONSTRAINT jornada_id_unique IF NOT EXISTS FOR (j:Jornada) REQUIRE j.id IS UNIQUE")
         session.run("CREATE CONSTRAINT company_id_unique IF NOT EXISTS FOR (c:Company) REQUIRE c.id IS UNIQUE")
         session.run("CREATE CONSTRAINT auditevent_id_unique IF NOT EXISTS FOR (ae:AuditEvent) REQUIRE ae.id IS UNIQUE")
+        session.run("CREATE CONSTRAINT simulationrun_id_unique IF NOT EXISTS FOR (sr:SimulationRun) REQUIRE sr.id IS UNIQUE")
         session.run("CREATE INDEX order_status_idx IF NOT EXISTS FOR (o:Order) ON (o.status)")
         session.run("CREATE INDEX auditevent_order_idx IF NOT EXISTS FOR (ae:AuditEvent) ON (ae.order_id)")
         session.run("CREATE INDEX route_status_idx IF NOT EXISTS FOR (r:Route) ON (r.status)")
@@ -56,6 +62,7 @@ def _sembrar_datos(session):
             MATCH (c:Company {id: 'pae-logistics'})
             MERGE (u)-[:BELONGS_TO]->(c)
         """)
+        _asegurar_repartidor_demo(session)
         _asegurar_rutas_repartidores(session)
         return
 
@@ -63,6 +70,7 @@ def _sembrar_datos(session):
         {"id": "central-1", "username": "central", "password_hash": contexto_contrasena.hash("central123"), "role": "central", "name": "Central Despacho", "is_available": False},
         {"id": "driver-1", "username": "driver1", "password_hash": contexto_contrasena.hash("driver123"), "role": "repartidor", "name": "Carlos García", "is_available": False},
         {"id": "driver-2", "username": "driver2", "password_hash": contexto_contrasena.hash("driver123"), "role": "repartidor", "name": "María López", "is_available": False},
+        {"id": DEMO_DRIVER_ID, "username": DEMO_DRIVER_USERNAME, "password_hash": contexto_contrasena.hash(DEMO_DRIVER_PASSWORD), "role": "repartidor", "name": "Repartidor Demo", "is_available": False},
     ]
     for u in usuarios:
         session.run("""
@@ -231,12 +239,47 @@ def _sembrar_datos(session):
     ubicaciones = [
         {"driver_id": "driver-1", "lat": 41.6260, "lng": 2.6900},
         {"driver_id": "driver-2", "lat": 41.6140, "lng": 2.6580},
+        {"driver_id": DEMO_DRIVER_ID, "lat": 41.6262, "lng": 2.6880},
     ]
     for loc in ubicaciones:
         session.run("""
             MATCH (u:User {id: $driver_id})
             SET u.lat = $lat, u.lng = $lng, u.heading = 0, u.location_updated_at = datetime()
         """, loc)
+
+
+def _asegurar_repartidor_demo(session):
+    password_hash = contexto_contrasena.hash(DEMO_DRIVER_PASSWORD)
+    session.run("""
+        OPTIONAL MATCH (existing_username:User {username: $username})
+        WITH existing_username
+        MERGE (u:User {id: $id})
+        ON CREATE SET
+            u.username = CASE
+                WHEN existing_username IS NULL OR existing_username.id = $id THEN $username
+                ELSE $fallback_username
+            END,
+            u.password_hash = $password_hash,
+            u.role = 'repartidor',
+            u.name = 'Repartidor Demo',
+            u.is_available = false,
+            u.created_at = datetime()
+        SET u.role = 'repartidor',
+            u.name = coalesce(u.name, 'Repartidor Demo'),
+            u.username = coalesce(u.username, CASE
+                WHEN existing_username IS NULL OR existing_username.id = $id THEN $username
+                ELSE $fallback_username
+            END),
+            u.password_hash = coalesce(u.password_hash, $password_hash)
+        WITH u
+        MATCH (c:Company {id: 'pae-logistics'})
+        MERGE (u)-[:BELONGS_TO]->(c)
+    """, {
+        "id": DEMO_DRIVER_ID,
+        "username": DEMO_DRIVER_USERNAME,
+        "fallback_username": DEMO_DRIVER_FALLBACK_USERNAME,
+        "password_hash": password_hash,
+    })
 
 
 def _asegurar_rutas_repartidores(session):

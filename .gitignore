@@ -40,3 +40,5 @@ Thumbs.db
 
 # Demo automation runtime state
 scripts/.demo-state.json
+scripts/.demo-state-linux.json
+scripts/.demo-logs/

@@ -66,19 +66,29 @@ class AppDriverLegendItem extends StatelessWidget {
     required this.color,
     required this.label,
     required this.detail,
+    this.isSelected = false,
+    this.onTap,
   });
 
   final Color color;
   final String label;
   final String detail;
+  final bool isSelected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.03),
+        color: isSelected
+            ? color.withValues(alpha: 0.14)
+            : Colors.black.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isSelected ? color : Colors.transparent,
+          width: 1.2,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -106,6 +116,17 @@ class AppDriverLegendItem extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) return content;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: content,
       ),
     );
   }
