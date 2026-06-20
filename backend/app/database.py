@@ -246,6 +246,8 @@ def _sembrar_datos(session):
             MATCH (u:User {id: $driver_id})
             SET u.lat = $lat, u.lng = $lng, u.heading = 0, u.location_updated_at = datetime()
         """, loc)
+    _asegurar_rutas_repartidores(session)
+
 
 
 def _asegurar_repartidor_demo(session):

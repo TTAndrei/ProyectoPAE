@@ -8,9 +8,11 @@ class AppConfig {
       return _apiBaseUrlFromEnvironment;
     }
 
-    final apiBaseUrlFromDotenv = dotenv.env['API_BASE_URL']?.trim();
-    if (apiBaseUrlFromDotenv != null && apiBaseUrlFromDotenv.isNotEmpty) {
-      return apiBaseUrlFromDotenv;
+    if (dotenv.isInitialized) {
+      final apiBaseUrlFromDotenv = dotenv.env['API_BASE_URL']?.trim();
+      if (apiBaseUrlFromDotenv != null && apiBaseUrlFromDotenv.isNotEmpty) {
+        return apiBaseUrlFromDotenv;
+      }
     }
 
     return 'http://localhost:8000';

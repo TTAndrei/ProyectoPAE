@@ -1,5 +1,5 @@
 """
-Simulación de demo PAE — driver1 (Carlos García) y driver2 (María López).
+Simulación de demo PAE — driver1 (Carlos García), driver2 (María López) y drivertest (Repartidor Demo).
 
 Requisitos:
   - Backend corriendo en http://localhost:8000
@@ -9,14 +9,10 @@ Uso:
   cd ProyectoPAE
   python scripts/simulate_demo.py
 
-El script:
-  1. Resetea la BD para empezar limpio
-  2. Hace login con central, driver1 y driver2
-  3. Los drivers inician jornada y envían ubicación GPS
-  4. Central crea pedidos nuevos y los asigna
-  5. Los drivers aceptan pedidos
-  6. Simula movimiento GPS gradual hacia los destinos
-  7. Los drivers completan las entregas
+Opciones:
+  python scripts/simulate_demo.py --auto         # Ejecuta todo sin pausas interactivas
+  python scripts/simulate_demo.py --no-reset     # Salta el reseteo de la base de datos
+  python scripts/simulate_demo.py -d 1.0         # Ajusta el delay de simulación en modo auto
 """
 
 import sys
@@ -24,10 +20,20 @@ import os
 import time
 import requests
 import math
+import subprocess
+import argparse
+import random
+
+# Configurar stdout para usar UTF-8 en Windows para evitar errores con emojis y caracteres especiales
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
 
 # ─── Configuración ─────────────────────────────────────────────────────────────
 API = os.getenv("API_BASE_URL", "http://localhost:8000")
-STEP_DELAY = 2.0  # segundos entre cada paso de la simulación
+STEP_DELAY = 1.0  # segundos entre cada paso de la simulación en modo automático o tick
+INTERACTIVE_MODE = True
 
 
 # ─── Colores para la consola ───────────────────────────────────────────────────
@@ -37,7 +43,7 @@ class C:
     GREEN = "\033[92m"
     BLUE = "\033[94m"
     CYAN = "\033[96m"
-    YELLOW = "\033[93m"
+    YELLOW = "\033[93"
     RED = "\033[91m"
     MAGENTA = "\033[95m"
     GRAY = "\033[90m"
@@ -56,7 +62,7 @@ def warn(msg):
 
 
 def driver_log(name, msg):
-    color = C.BLUE if "Carlos" in name else C.MAGENTA
+    color = C.BLUE if "Carlos" in name else (C.MAGENTA if "María" in name else C.YELLOW)
     print(f"  {color}🚚 [{name}]{C.RESET} {msg}")
 
 
@@ -104,6 +110,81 @@ def wait(seconds=None):
     time.sleep(seconds or STEP_DELAY)
 
 
+def next_step(title):
+    global INTERACTIVE_MODE
+    print(f"\n{C.CYAN}{C.BOLD}══> {title}{C.RESET}")
+    if not INTERACTIVE_MODE:
+        wait(STEP_DELAY)
+    else:
+        try:
+            val = input(f"  {C.YELLOW}👉 Presiona [Enter] para avanzar (o escribe 'auto' para omitir pausas): {C.RESET}").strip().lower()
+            if val == 'auto':
+                INTERACTIVE_MODE = False
+                print(f"  {C.GREEN}✓ Modo automático activado para el resto de la simulación.{C.RESET}\n")
+                wait(STEP_DELAY)
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{C.YELLOW}Simulación cancelada por el usuario.{C.RESET}")
+            sys.exit(0)
+
+
+# ─── Tablas y Visuales de Estado del Sistema ──────────────────────────────────
+def print_status_table(token):
+    try:
+        orders = api_get("/orders/", token)
+        drivers = api_get("/drivers/", token)
+        
+        print(f"\n  {C.BOLD}┌─ Estado de Pedidos ────────────────────────────────────────────────────────┐{C.RESET}")
+        print(f"  {C.BOLD}│ ID         │ Nombre/Cliente       │ Tipo     │ Estado      │ Repartidor      │{C.RESET}")
+        print(f"  {C.BOLD}├────────────┼──────────────────────┼──────────┼─────────────┼─────────────────┤{C.RESET}")
+        for o in orders:
+            oid = o.get("id", "")[:10]
+            name = o.get("name", "N/A")[:20]
+            type_str = o.get("type", "N/A")
+            status = o.get("status", "pending")
+            driver_id = o.get("assigned_driver_id")
+            
+            status_color = C.GRAY
+            if status == "completed":
+                status_color = C.GREEN
+            elif status == "in_progress":
+                status_color = C.BLUE
+            elif status == "assigned":
+                status_color = C.YELLOW
+            
+            driver_name = "Ninguno"
+            if driver_id:
+                for d in drivers:
+                    if d["id"] == driver_id:
+                        driver_name = d["name"]
+                        break
+            driver_name = driver_name[:15]
+            
+            print(f"  │ {oid:<10} │ {name:<20} │ {type_str:<8} │ {status_color}{status:<11}{C.RESET} │ {driver_name:<15} │")
+        print(f"  {C.BOLD}└────────────────────────────────────────────────────────────────────────────┘{C.RESET}")
+
+        print(f"  {C.BOLD}┌─ Estado de Conductores ────────────────────────────────────────────────────┐{C.RESET}")
+        print(f"  {C.BOLD}│ ID         │ Nombre               │ Estado       │ Ubicación        │ Eficiencia │{C.RESET}")
+        print(f"  {C.BOLD}├────────────┼──────────────────────┼──────────────┼──────────────────┼────────────┤{C.RESET}")
+        for d in drivers:
+            did = d.get("id", "")[:10]
+            name = d.get("name", "N/A")[:20]
+            avail = d.get("is_available", False)
+            lat = d.get("lat")
+            lng = d.get("lng")
+            eff = d.get("load_efficiency_percent")
+            
+            avail_pad = "Activo" if avail else "Inactivo"
+            avail_color = C.GREEN if avail else C.RED
+            avail_display = f"{avail_color}{avail_pad:<12}{C.RESET}"
+            loc_str = f"{lat:.4f},{lng:.4f}" if lat is not None else "Sin GPS"
+            eff_str = f"{eff:.1f}%" if eff is not None else "N/A"
+            
+            print(f"  │ {did:<10} │ {name:<20} │ {avail_display} │ {loc_str:<16} │ {eff_str:<10} │")
+        print(f"  {C.BOLD}└────────────────────────────────────────────────────────────────────────────┘{C.RESET}")
+    except Exception as e:
+        warn(f"No se pudo imprimir la tabla de estado: {e}")
+
+
 # ─── Movimiento GPS simulado ──────────────────────────────────────────────────
 def interpolate_points(start, end, steps=5):
     """Genera puntos intermedios entre start y end."""
@@ -125,303 +206,433 @@ def send_location(token, driver_id, lat, lng):
     })
 
 
+def print_progress(name, current, total, lat, lng, type_str="vial"):
+    percent = int(current / total * 100)
+    bar_length = 20
+    filled_length = int(bar_length * current // total)
+    bar = "█" * filled_length + "░" * (bar_length - filled_length)
+    color = C.BLUE if "Carlos" in name else (C.MAGENTA if "María" in name else C.YELLOW)
+    sys.stdout.write(f"\r  {color}🚚 [{name}]{C.RESET} Tránsito {type_str} [{bar}] {percent}% | GPS: {lat:.4f}, {lng:.4f}  ")
+    sys.stdout.flush()
+    if current == total:
+        sys.stdout.write("\n")
+
+
+def move_driver_along_geometry(name, token, driver_id, start_pos, geometry, steps=10):
+    sampled_points = []
+    n = len(geometry)
+    if n <= steps:
+        sampled_points = geometry
+    else:
+        for idx in range(steps):
+            sampled_idx = int(idx * (n - 1) / (steps - 1))
+            sampled_points.append(geometry[sampled_idx])
+            
+    for idx, pt in enumerate(sampled_points):
+        lat = pt["lat"]
+        lng = pt["lng"]
+        send_location(token, driver_id, lat, lng)
+        print_progress(name, idx + 1, len(sampled_points), lat, lng, "vial (OSRM)")
+        time.sleep(0.2)
+
+
+def move_driver_lineal(name, token, driver_id, start_pos, end_pos, steps=10):
+    points = interpolate_points(start_pos, end_pos, steps)
+    for idx, pt in enumerate(points):
+        lat, lng = pt
+        send_location(token, driver_id, lat, lng)
+        print_progress(name, idx + 1, len(points), lat, lng, "lineal")
+        time.sleep(0.2)
+
+
+def move_driver_along_route_plan(name, token, driver_id, current_pos, steps=10):
+    try:
+        route_plan = api_get(f"/orders/route/{driver_id}", token)
+        geometry = route_plan.get("route_geometry", [])
+        if geometry:
+            move_driver_along_geometry(name, token, driver_id, current_pos, geometry, steps)
+            return geometry[-1]
+    except Exception as e:
+        warn(f"No se pudo simular movimiento vial OSRM para {name}: {e}")
+    return None
+
+
+def create_random_order(token):
+    """Crea un pedido express aleatorio en Pineda, Calella o Canet de Mar."""
+    cities = [
+        {
+            "name": "Pineda de Mar",
+            "lat_range": (41.6220, 41.6290),
+            "lng_range": (2.6850, 2.6950),
+            "addresses": ["Carrer de Mar", "Calle Mayor", "Avinguda Montserrat", "Carrer Església", "Carrer Santiago Rusiñol"]
+        },
+        {
+            "name": "Calella",
+            "lat_range": (41.6110, 41.6180),
+            "lng_range": (2.6520, 2.6650),
+            "addresses": ["Carrer Sant Jaume", "Calle Riera", "Carrer de l'Església", "Avinguda del Valès", "Carrer Jovara"]
+        },
+        {
+            "name": "Canet de Mar",
+            "lat_range": (41.5850, 41.5930),
+            "lng_range": (2.5720, 2.5830),
+            "addresses": ["Carrer Ample", "Riera de Sant Domenech", "Carrer de la Font", "Carrer de Mar", "Carrer Vall"]
+        }
+    ]
+    
+    city = random.choice(cities)
+    lat = round(random.uniform(*city["lat_range"]), 6)
+    lng = round(random.uniform(*city["lng_range"]), 6)
+    street = random.choice(city["addresses"])
+    number = random.randint(1, 150)
+    address = f"{street} {number}, {city['name']}"
+    
+    order_type = random.choice(["pickup", "delivery"])
+    commerces = ["Supermercado", "Restaurante", "Farmacia", "Ferretería", "Panadería", "Librería", "Cafetería", "Floristería", "Pizzería"]
+    names = ["Gourmet", "Express", "Central", "Familiar", "del Barrio", "24h", "Eco", "Premium", "Estrella"]
+    order_name = f"{random.choice(commerces)} {random.choice(names)} {city['name']}"
+    
+    order_data = {
+        "type": order_type,
+        "name": order_name,
+        "address": address,
+        "lat": lat,
+        "lng": lng
+    }
+    
+    try:
+        created = api_post("/orders/", token, order_data)
+        driver_id = created.get("assigned_driver_id")
+        assigned_name = "Ninguno"
+        if driver_id:
+            drivers = api_get("/drivers/", token)
+            for d in drivers:
+                if d["id"] == driver_id:
+                    assigned_name = d["name"]
+                    break
+        
+        print(f"\n  {C.YELLOW}{C.BOLD}⚡ [SIMULACIÓN DINÁMICA] ¡Pedido Express Generado!{C.RESET}")
+        central_log(f"Pedido: {created['id'][:8]} — {order_name} ({order_type.upper()})")
+        central_log(f"Ubicación: {address} ({lat:.4f}, {lng:.4f})")
+        central_log(f"Asignado automáticamente por Backhauling 🤖: {C.GREEN}{assigned_name}{C.RESET}")
+        return created
+    except Exception as e:
+        warn(f"No se pudo crear el pedido aleatorio: {e}")
+        return None
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  SIMULACIÓN PRINCIPAL
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    print(f"\n{C.BOLD}{'═' * 60}{C.RESET}")
-    print(f"{C.BOLD}{C.CYAN}   SIMULACIÓN DEMO PAE — Última Milla{C.RESET}")
-    print(f"{C.BOLD}{'═' * 60}{C.RESET}")
+    global INTERACTIVE_MODE, STEP_DELAY
+    parser = argparse.ArgumentParser(description="Simulación de demo PAE — repartidores y central.")
+    parser.add_argument("--delay", "-d", type=float, default=1.0, help="Segundos entre cada paso en modo automático o tick.")
+    parser.add_argument("--no-reset", "-n", action="store_true", help="Evita resetear la base de datos.")
+    parser.add_argument("--auto", "-a", action="store_true", help="Ejecuta la simulación completa sin pausas interactivas.")
+    args = parser.parse_args()
 
-    # ── 0. Verificar que el backend está corriendo ─────────────────────────
-    step("Verificando backend...")
+    STEP_DELAY = args.delay
+    INTERACTIVE_MODE = not args.auto
+
+    print(f"\n{C.BOLD}{'═' * 70}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}   SIMULACIÓN COMPLETA DE DEMO PAE — Gestión y Backhauling de Rutas{C.RESET}")
+    print(f"{C.BOLD}{'═' * 70}{C.RESET}")
+    if INTERACTIVE_MODE:
+        print(f" {C.YELLOW}ℹ Modo interactivo activo. Abre la app móvil o central para ver los cambios.{C.RESET}")
+        print(f"   Podrás presionar Enter para pasar al siguiente evento y ver cómo interactúan.")
+    else:
+        print(f" {C.GREEN}ℹ Modo automático activo con delay de {STEP_DELAY}s.{C.RESET}")
+
+    # ── 1. Verificar Backend ──────────────────────────────────────────────────
+    step("Verificando conexión con el backend...")
     try:
         r = requests.get(f"{API}/health", timeout=5)
         if r.status_code == 200:
-            info(f"Backend OK en {API}")
+            info(f"Backend disponible en {API}")
         else:
-            warn(f"Backend respondió con status {r.status_code}")
+            warn(f"Backend respondió con estado inesperado {r.status_code}")
     except requests.ConnectionError:
-        print(f"\n  {C.RED}✗ No se pudo conectar al backend en {API}{C.RESET}")
-        print(f"  {C.GRAY}Asegúrate de que el backend esté corriendo con:")
+        print(f"\n  {C.RED}✗ Error: No se puede conectar al servidor backend en {API}{C.RESET}")
+        print(f"  {C.GRAY}Asegúrate de iniciar el backend con:")
         print(f"    cd backend && python -m uvicorn app.main:aplicacion --reload --port 8000{C.RESET}")
         sys.exit(1)
 
-    # ── 1. Login ───────────────────────────────────────────────────────────
-    step("Iniciando sesión con usuarios demo...")
+    # ── 2. Resetear Base de Datos ──────────────────────────────────────────────
+    if not args.no_reset:
+        step("Reseteando y sembrando base de datos Neo4j...")
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            reset_script = os.path.abspath(os.path.join(script_dir, "..", "backend", "reset_db.py"))
+            venv_python = os.path.abspath(os.path.join(script_dir, "..", "backend", ".venv", "Scripts", "python.exe"))
+            python_cmd = venv_python if os.path.exists(venv_python) else sys.executable
+            
+            if os.path.exists(reset_script):
+                subprocess.run(
+                    [python_cmd, "reset_db.py"],
+                    cwd=os.path.abspath(os.path.join(script_dir, "..", "backend")),
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                info("¡Base de datos Neo4j limpia y sembrada con datos iniciales de Pineda/Calella!")
+            else:
+                warn(f"No se localizó el script de reseteo en: {reset_script}")
+        except Exception as e:
+            warn(f"No se pudo ejecutar reset_db.py de forma automática: {e}")
+    else:
+        info("Omitiendo el reseteo de la base de datos (--no-reset).")
 
+    # ── 3. Login ──────────────────────────────────────────────────────────────
+    next_step("Iniciando sesión con los usuarios de prueba...")
+    
     central_token, central_user = login("central", "central123")
-    info(f"Central: {central_user['name']} (id: {central_user['id']})")
+    info(f"Central: {central_user['name']} (ID: {central_user['id']})")
 
     d1_token, d1_user = login("driver1", "driver123")
-    info(f"Driver 1: {d1_user['name']} (id: {d1_user['id']})")
+    info(f"Driver 1: {d1_user['name']} (ID: {d1_user['id']})")
 
     d2_token, d2_user = login("driver2", "driver123")
-    info(f"Driver 2: {d2_user['name']} (id: {d2_user['id']})")
+    info(f"Driver 2: {d2_user['name']} (ID: {d2_user['id']})")
 
-    wait(1)
+    try:
+        d3_token, d3_user = login("drivertest", "driver123")
+    except Exception:
+        d3_token, d3_user = login("driverdemo", "driver123")
+    info(f"Driver 3 (Demo): {d3_user['name']} (ID: {d3_user['id']})")
 
-    # ── 2. Drivers inician jornada ─────────────────────────────────────────
-    step("Drivers inician jornada laboral...")
-
-    # Verificar si ya tienen jornada activa
-    for name, token, user in [("Carlos García", d1_token, d1_user), ("María López", d2_token, d2_user)]:
+    # ── 4. Iniciar Jornada Laboral ─────────────────────────────────────────────
+    next_step("Activando jornada laboral de los 3 repartidores...")
+    
+    for name, token, user in [
+        ("Carlos García", d1_token, d1_user),
+        ("María López", d2_token, d2_user),
+        ("Repartidor Demo", d3_token, d3_user),
+    ]:
         try:
             active = api_get("/drivers/me/jornada/active", token)
             if active:
-                driver_log(name, "Ya tiene jornada activa, continuando...")
+                driver_log(name, "Ya tiene una jornada de trabajo activa")
                 continue
         except Exception:
             pass
+        
         try:
             api_post("/drivers/me/jornada/start", token)
-            driver_log(name, "¡Jornada iniciada! 🟢")
+            driver_log(name, "¡Jornada de trabajo iniciada! 🟢 (Estado disponible)")
         except requests.HTTPError as e:
             if e.response.status_code == 409:
-                driver_log(name, "Ya tiene jornada activa")
+                driver_log(name, "Ya tiene jornada de trabajo activa")
             else:
                 raise
 
-    wait(1)
+    # ── 5. Enviar Ubicaciones GPS Iniciales y Aceptar Pedidos Iniciales ─────────
+    next_step("Estableciendo posiciones GPS iniciales...")
 
-    # ── 3. Enviar ubicación inicial GPS ────────────────────────────────────
-    step("Enviando ubicación GPS inicial de los drivers...")
-
-    # Carlos empieza en el almacén central (Pineda de Mar)
+    # Carlos (Pineda Almacén)
     d1_pos = (41.6260, 2.6900)
     send_location(d1_token, d1_user["id"], *d1_pos)
-    driver_log("Carlos García", f"GPS: {d1_pos[0]:.4f}, {d1_pos[1]:.4f} (Almacén Pineda)")
+    driver_log("Carlos García", f"GPS: {d1_pos[0]:.4f}, {d1_pos[1]:.4f} (Almacén central Pineda)")
 
-    # María empieza en zona Calella
+    # María (Calella Entrada)
     d2_pos = (41.6140, 2.6580)
     send_location(d2_token, d2_user["id"], *d2_pos)
-    driver_log("María López", f"GPS: {d2_pos[0]:.4f}, {d2_pos[1]:.4f} (Zona Calella)")
+    driver_log("María López", f"GPS: {d2_pos[0]:.4f}, {d2_pos[1]:.4f} (Calella)")
 
-    wait(1)
+    # Repartidor Demo (Canet de Mar)
+    d3_pos = (41.5900, 2.5800)
+    send_location(d3_token, d3_user["id"], *d3_pos)
+    driver_log("Repartidor Demo", f"GPS: {d3_pos[0]:.4f}, {d3_pos[1]:.4f} (Canet de Mar)")
 
-    # ── 4. Ver pedidos existentes ──────────────────────────────────────────
-    step("Consultando pedidos actuales...")
+    # Los conductores aceptan sus pedidos iniciales asignados en la base de datos
     orders = api_get("/orders/", central_token)
-    info(f"Total pedidos en el sistema: {len(orders)}")
+    for token, uid, name in [
+        (d1_token, d1_user["id"], "Carlos García"),
+        (d2_token, d2_user["id"], "María López"),
+        (d3_token, d3_user["id"], "Repartidor Demo"),
+    ]:
+        assigned = [o for o in orders if o.get("assigned_driver_id") == uid and o["status"] == "assigned"]
+        for o in assigned:
+            try:
+                api_post(f"/orders/{o['id']}/respond", token, {"accepted": True})
+                driver_log(name, f"Acepta pedido inicial {o['id']} ({o.get('name')}) ✅")
+            except Exception as e:
+                warn(f"No se pudo aceptar el pedido inicial {o['id']} para {name}: {e}")
 
-    assigned_orders = [o for o in orders if o.get("status") == "assigned"]
-    pending_orders = [o for o in orders if o.get("status") == "pending"]
-    info(f"  Asignados: {len(assigned_orders)}, Pendientes: {len(pending_orders)}")
+    print_status_table(central_token)
 
-    for o in orders[:6]:
-        status_icon = {"assigned": "🟡", "pending": "⚪", "in_progress": "🔵", "completed": "✅"}.get(o["status"], "❓")
-        driver_tag = f" → {o['assigned_driver_id']}" if o.get('assigned_driver_id') else ""
-        print(f"    {status_icon} [{o['id']}] {o.get('name', 'Sin nombre')} — {o['status']}{driver_tag}")
+    # ── 6. Línea de Tiempo de Reparto Unificada (Simulación Dinámica) ─────────────
+    next_step("Iniciando línea de tiempo de reparto y creación dinámica de pedidos...")
+    print("  (Los conductores avanzan por sus rutas. Central creará nuevos pedidos calientes")
+    print("   que se auto-asignarán, se aceptarán y replanificarán las rutas sobre la marcha.)")
+    print(f"  {C.YELLOW}ℹ La simulación correrá automáticamente segundo a segundo para mostrar la animación en el mapa.{C.RESET}")
 
-    wait(1)
+    # Guardar estado de la ruta de cada conductor para controlar el progreso
+    driver_routes = {
+        d1_user["id"]: {"geometry": [], "index": 0, "order_ids": []},
+        d2_user["id"]: {"geometry": [], "index": 0, "order_ids": []},
+        d3_user["id"]: {"geometry": [], "index": 0, "order_ids": []},
+    }
 
-    # ── 5. Movimiento en ruta y creación de pedidos en caliente ─────────────
-    step("Simulando movimiento de los drivers y creación de pedidos en caliente...")
-
-    # Carlos se mueve hacia zona Pineda Centro
-    d1_dest = (41.6245, 2.6890)
-    d1_route = interpolate_points(d1_pos, d1_dest, steps=15)
-
-    # María se mueve hacia zona Calella Centro
-    d2_dest = (41.6155, 2.6610)
-    d2_route = interpolate_points(d2_pos, d2_dest, steps=15)
-
-    new_orders = []
-    # Pedidos que se crearán en caliente durante el trayecto
-    hot_orders_data = [
-        {"step": 2, "data": {"type": "delivery", "name": "Panadería Artesana", "address": "Carrer del Mar 25, Pineda de Mar", "lat": 41.6245, "lng": 2.6890}},
-        {"step": 4, "data": {"type": "pickup", "name": "Bodega Can Riera", "address": "Avinguda Maresme 12, Pineda de Mar", "lat": 41.6278, "lng": 2.6855}},
-        {"step": 6, "data": {"type": "delivery", "name": "Electro Calella", "address": "Carrer Sant Joan 8, Calella", "lat": 41.6155, "lng": 2.6610}},
+    # Nuevos pedidos a crear en caliente durante la simulación en puntos estratégicos
+    hot_orders = [
+        {"step": 2, "data": {"type": "delivery", "name": "Comercio Pineda Express", "address": "Carrer de Mar 25, Pineda", "lat": 41.6240, "lng": 2.6885}, "expected": "Carlos García (driver1)"},
+        {"step": 4, "data": {"type": "delivery", "name": "Tienda Calella Express", "address": "Carrer Sant Jaume 100, Calella", "lat": 41.6150, "lng": 2.6605}, "expected": "María López (driver2)"},
+        {"step": 6, "data": {"type": "delivery", "name": "Café Canet Express", "address": "Carrer Ample 5, Canet de Mar", "lat": 41.5870, "lng": 2.5750}, "expected": "Repartidor Demo (drivertest)"},
+        {"step": 8, "data": {"type": "pickup", "name": "Supermercado Día Calella", "address": "Calle Riera 30, Calella", "lat": 41.6128, "lng": 2.6548}, "expected": "María López (driver2)"},
+        {"step": 10, "data": {"type": "pickup", "name": "Librería Central Pineda", "address": "Calle Mayor 45, Pineda", "lat": 41.6258, "lng": 2.6875}, "expected": "Carlos García (driver1)"},
     ]
 
-    max_steps = max(len(d1_route), len(d2_route))
+    total_ticks = 20
+    for tick in range(1, total_ticks + 1):
+        print(f"\n{C.BOLD}⏰ [TICK SIMULADO: {tick}/{total_ticks} | Frecuencia: {STEP_DELAY}s]{C.RESET}")
+        
+        # 1. Crear pedidos express predefinidos según el tick de la línea de tiempo
+        for ho in hot_orders:
+            if ho["step"] == tick:
+                print(f"  {C.YELLOW}{C.BOLD}⚡ [EVENTO CENTRAL] Creando pedido express sobre la marcha...{C.RESET}")
+                try:
+                    created = api_post("/orders/", central_token, ho["data"])
+                    driver_id = created.get("assigned_driver_id")
+                    assigned_name = "Ninguno"
+                    if driver_id == d1_user["id"]:
+                        assigned_name = "Carlos García"
+                    elif driver_id == d2_user["id"]:
+                        assigned_name = "María López"
+                    elif driver_id == d3_user["id"]:
+                        assigned_name = "Repartidor Demo"
+                    central_log(f"Pedido express creado: {created['id'][:8]} — {ho['data']['name']}")
+                    central_log(f"Asignado dinámicamente por Backhauling 🤖: {C.GREEN}{assigned_name}{C.RESET} (Esperado: {ho['expected']})")
+                except Exception as e:
+                    warn(f"No se pudo crear el pedido express predefinido: {e}")
 
-    for i in range(max_steps):
-        # Mover conductores
-        if i < len(d1_route):
-            lat, lng = d1_route[i]
-            send_location(d1_token, d1_user["id"], lat, lng)
-            driver_log("Carlos García", f"📍 GPS {lat:.4f}, {lng:.4f}  (paso {i+1}/{len(d1_route)})")
+        # 2. Generar pedidos aleatorios cada 4 ticks después del tick 12 para una simulación continua/dinámica rápida
+        if tick >= 12 and tick % 4 == 0:
+            create_random_order(central_token)
 
-        if i < len(d2_route):
-            lat, lng = d2_route[i]
-            send_location(d2_token, d2_user["id"], lat, lng)
-            driver_log("María López", f"📍 GPS {lat:.4f}, {lng:.4f}  (paso {i+1}/{len(d2_route)})")
 
-        # Central crea pedidos en caliente en pasos específicos
-        for ho in hot_orders_data:
-            if ho["step"] == i + 1:
-                print(f"\n{C.YELLOW}⚡ [EVENTO CENTRAL] Creando pedido sobre la marcha...{C.RESET}")
-                new_order = api_post("/orders/", central_token, ho["data"])
-                new_orders.append(new_order)
-                driver_id = new_order.get("assigned_driver_id")
-                driver_name = "Carlos García" if driver_id == d1_user["id"] else ("María López" if driver_id == d2_user["id"] else None)
-                if driver_name:
-                    central_log(f"Pedido creado: {new_order['id']} — {ho['data']['name']} (Asignado automáticamente a {driver_name} 🤖)")
-                else:
-                    central_log(f"Pedido creado: {new_order['id']} — {ho['data']['name']} (Queda PENDIENTE ⚪)")
-                print()
-
-        wait(1.2)
-
-    info("Drivers han llegado a sus ubicaciones intermedias")
-    wait(1)
-
-    # ── 6. Central asigna pedidos pendientes manualmente ───────────────────
-    step("Central asigna pedidos pendientes de forma manual...")
-
-    # Refrescar lista de pedidos
-    orders = api_get("/orders/", central_token)
-    pending = [o for o in orders if o["status"] == "pending"]
-
-    if not pending:
-        info("No hay pedidos pendientes en el sistema que requieran asignación manual.")
-    else:
-        # Si hay pendientes, los asignamos manualmente para demostrar la funcionalidad de la central
-        for i, po in enumerate(pending):
-            # Alternamos la asignación entre Carlos (driver1) y María (driver2)
-            target_driver = d1_user if i % 2 == 0 else d2_user
-            target_name = "Carlos García" if i % 2 == 0 else "María López"
+        # 3. Actualizar posiciones de los conductores de manera suave y completar entregas
+        for name, token, uid in [
+            ("Carlos García", d1_token, d1_user["id"]),
+            ("María López", d2_token, d2_user["id"]),
+            ("Repartidor Demo", d3_token, d3_user["id"]),
+        ]:
             try:
-                api_post(f"/orders/{po['id']}/assign", central_token, {"driver_id": target_driver["id"]})
-                central_log(f"Asignación Manual: {po['id']} ({po.get('name', 'N/A')}) → {target_name} 🏢")
-            except requests.HTTPError as e:
-                warn(f"No se pudo asignar manualmente {po['id']}: {e.response.text}")
+                # Obtener la ruta activa del conductor
+                plan = api_get(f"/orders/route/{uid}", token)
+                orders_list = plan.get("orders", [])
+                
+                # Auto-aceptar asignaciones nuevas si las hay en la lista
+                for o in orders_list:
+                    if o["status"] == "assigned":
+                        api_post(f"/orders/{o['id']}/respond", token, {"accepted": True})
+                        driver_log(name, f"¡Acepta dinámicamente la nueva asignación: {o['id'][:8]}! 📦✅")
+                
+                # Volver a consultar si hubo cambios aceptados
+                if any(o["status"] == "assigned" for o in orders_list):
+                    plan = api_get(f"/orders/route/{uid}", token)
+                    orders_list = plan.get("orders", [])
 
-    wait(1)
+                if not orders_list:
+                    # Si el conductor no tiene paradas activas, permanece en su sitio y mostramos reposo
+                    # Solo imprimimos reposo cada 10 ticks para no saturar la consola
+                    if tick % 10 == 0:
+                        driver_log(name, "En reposo. Esperando nuevas asignaciones... 💤")
+                    continue
 
-    # ── 7. Drivers aceptan TODOS sus pedidos asignados ─────────────────────
-    step("Drivers responden a los pedidos asignados...")
+                geometry = plan.get("route_geometry", [])
+                if not geometry:
+                    continue
 
-    # Refrescar pedidos para cada driver
-    orders = api_get("/orders/", central_token)
-    carlos_assigned = [o for o in orders if o.get("assigned_driver_id") == d1_user["id"] and o["status"] == "assigned"]
-    maria_assigned = [o for o in orders if o.get("assigned_driver_id") == d2_user["id"] and o["status"] == "assigned"]
+                geom_pts = [(pt["lat"], pt["lng"]) for pt in geometry]
+                current_order_ids = [o["id"] for o in orders_list]
+                saved = driver_routes[uid]
+                
+                # Si las paradas o geometría cambiaron (por nueva asignación o finalización), re-inicializar
+                if saved["order_ids"] != current_order_ids or not saved["geometry"]:
+                    saved["geometry"] = geom_pts
+                    saved["index"] = 0
+                    saved["order_ids"] = current_order_ids
+                
+                geom = saved["geometry"]
+                idx = saved["index"]
+                
+                # Avanzamos un tramo de la geometría restante de forma rápida (un tercio de la ruta restante por tick)
+                step_size = max(1, len(geom) // 3)
+                new_idx = min(idx + step_size, len(geom) - 1)
+                saved["index"] = new_idx
 
-    for o in carlos_assigned:
-        try:
-            result = api_post(f"/orders/{o['id']}/respond", d1_token, {"accepted": True})
-            extra = result.get("extra_minutes")
-            extra_text = f" (+{extra:.1f} min)" if extra else ""
-            driver_log("Carlos García", f"Acepta {o['id']} — {o.get('name', 'N/A')}{extra_text} ✅")
-        except requests.HTTPError as e:
-            warn(f"Carlos no pudo aceptar {o['id']}: {e.response.text}")
-        wait(0.3)
 
-    for o in maria_assigned:
-        try:
-            result = api_post(f"/orders/{o['id']}/respond", d2_token, {"accepted": True})
-            extra = result.get("extra_minutes")
-            extra_text = f" (+{extra:.1f} min)" if extra else ""
-            driver_log("María López", f"Acepta {o['id']} — {o.get('name', 'N/A')}{extra_text} ✅")
-        except requests.HTTPError as e:
-            warn(f"María no pudo aceptar {o['id']}: {e.response.text}")
-        wait(0.3)
+                
+                lat, lng = geom[new_idx]
+                send_location(token, uid, lat, lng)
+                
+                # Mostrar progreso visual en consola
+                print_progress(name, new_idx + 1, len(geom), lat, lng, "vial (OSRM)")
+                
+                # Verificar llegada al primer destino de su ruta
+                target_order = orders_list[0]
+                t_lat, t_lng = target_order["lat"], target_order["lng"]
+                dist = math.sqrt((lat - t_lat)**2 + (lng - t_lng)**2)
+                
+                # Si está a menos de ~120 metros o al final de la geometría de este tramo
+                if dist < 0.0012 or new_idx >= len(geom) - 1:
+                    api_patch(f"/orders/{target_order['id']}/status", token, {"status": "completed"})
+                    driver_log(name, f"🏁 ¡Llegó al destino! Pedido {C.GREEN}{target_order['id'][:8]}{C.RESET} ({target_order.get('name', 'N/A')}) completado 📦✅")
+                    # Borrar geometría guardada para obligar a recargar la nueva ruta reducida en el siguiente tick
+                    saved["geometry"] = []
+                    
+            except Exception as e:
+                warn(f"Error procesando movimiento del repartidor {name}: {e}")
 
-    wait(1)
+        # Tiempo entre ticks simulados
+        time.sleep(STEP_DELAY)
 
-    # ── 8. Simular movimiento final GPS a destino ───────────────────────────
-    step("Drivers continúan su ruta final...")
-    # (Ya llegaron a destino intermedio, mandamos confirmación final de GPS)
-    if carlos_assigned:
-        # Carlos se mueve a la posición de su último pedido asignado
-        final_pos = (carlos_assigned[-1]["lat"], carlos_assigned[-1]["lng"])
-        send_location(d1_token, d1_user["id"], *final_pos)
-        driver_log("Carlos García", f"📍 GPS Final {final_pos[0]:.4f}, {final_pos[1]:.4f} (Destino alcanzado)")
-    if maria_assigned:
-        final_pos = (maria_assigned[-1]["lat"], maria_assigned[-1]["lng"])
-        send_location(d2_token, d2_user["id"], *final_pos)
-        driver_log("María López", f"📍 GPS Final {final_pos[0]:.4f}, {final_pos[1]:.4f} (Destino alcanzado)")
+    # Mostrar tablas de estado al finalizar el reparto de la simulación
+    print_status_table(central_token)
 
-    wait(1)
-
-    # ── 9. Completar pedidos de los drivers ──────────────────
-    step("Drivers completan entregas...")
-
-    for name, token, assigned in [("Carlos García", d1_token, carlos_assigned), ("María López", d2_token, maria_assigned)]:
-        if assigned:
-            # Completamos todos los asignados tal como el usuario quiere
-            to_complete = assigned[:]
-            for order in to_complete:
-                api_patch(f"/orders/{order['id']}/status", token, {"status": "completed"})
-                driver_log(name, f"Pedido {order['id']} completado — {order.get('name', 'N/A')} 📦✅")
-            remaining = len(assigned) - len(to_complete)
-            if remaining > 0:
-                driver_log(name, f"Quedan {remaining} pedido(s) en ruta 🔵")
-
-    wait(1)
-
-    # ── 10. KPIs de los drivers ────────────────────────────────────────────
-    step("Consultando KPIs de eficiencia...")
+    # ── 7. KPIs de Eficiencia (Tras terminar la jornada y entregas) ────────────
+    next_step("Consultando KPIs de eficiencia y carga finales...")
+    print("  (Al estar vacíos los camiones, la eficiencia actual de ruta será de 0.0%,")
+    print("   pero el total de pedidos completados durante el día quedará guardado)")
 
     for name, token, user_id in [
         ("Carlos García", d1_token, d1_user["id"]),
         ("María López", d2_token, d2_user["id"]),
+        ("Repartidor Demo", d3_token, d3_user["id"]),
     ]:
         try:
             kpis = api_get(f"/drivers/{user_id}/kpis", token)
-            efficiency = kpis.get("load_efficiency_percent", 0)
-            loaded_km = kpis.get("loaded_distance_km", 0)
-            total_km = kpis.get("total_distance_km", 0)
-            active = kpis.get("active_order_count", 0)
-            completed_count = kpis.get("completed_order_count", 0)
-            meets_target = kpis.get("meets_load_efficiency_target", False)
-            target_icon = "✅" if meets_target else "⚠️"
-
-            driver_log(name, f"Eficiencia de carga: {efficiency:.1f}% {target_icon}")
-            print(f"      📊 Cargados: {loaded_km:.2f} km / Total: {total_km:.2f} km")
-            print(f"      📦 Activos: {active} | Completados: {completed_count}")
+            eff = kpis.get("load_efficiency_percent", 0)
+            completed = kpis.get("completed_order_count", 0)
+            driver_log(name, f"Eficiencia de carga final: {eff:.1f}% | Total completados hoy: {C.GREEN}{completed}{C.RESET} 📦")
         except Exception as e:
-            warn(f"No se pudieron obtener KPIs de {name}: {e}")
+            warn(f"No se pudieron obtener métricas KPI finales para {name}: {e}")
 
-    wait(1)
+    # ── 8. Terminar la Jornada Laboral ────────────────────────────────────────
+    next_step("Los conductores terminan su jornada de trabajo al final del día...")
 
-    # ── 11. Estado final ───────────────────────────────────────────────────
-    step("Estado final del sistema...")
-
-    orders = api_get("/orders/", central_token)
-    completed = [o for o in orders if o["status"] == "completed"]
-    in_progress = [o for o in orders if o["status"] == "in_progress"]
-    assigned = [o for o in orders if o["status"] == "assigned"]
-    pending_final = [o for o in orders if o["status"] == "pending"]
-
-    info(f"Total pedidos: {len(orders)}")
-    print(f"    ✅ Completados: {len(completed)}")
-    print(f"    🔵 En progreso: {len(in_progress)}")
-    print(f"    🟡 Asignados: {len(assigned)}")
-    print(f"    ⚪ Pendientes: {len(pending_final)}")
-
-    # Mostrar drivers con KPIs
-    try:
-        drivers = api_get("/drivers/", central_token)
-        print()
-        for d in drivers:
-            avail = "🟢 Disponible" if d.get("is_available") else "🔴 No disponible"
-            loc = f"({d['lat']:.4f}, {d['lng']:.4f})" if d.get("lat") else "(sin GPS)"
-            eff = d.get("load_efficiency_percent")
-            eff_text = f" | Carga: {eff:.1f}%" if eff is not None else ""
-            print(f"    🚚 {d['name']} — {avail} — {loc}{eff_text}")
-    except Exception:
-        pass
-
-    # ── 12. Terminar jornada de los drivers ────────────────────────────────
-    step("Drivers terminan su jornada laboral al final del día...")
-
-    for name, token in [("Carlos García", d1_token), ("María López", d2_token)]:
+    for name, token in [
+        ("Carlos García", d1_token),
+        ("María López", d2_token),
+        ("Repartidor Demo", d3_token),
+    ]:
         try:
             api_post("/drivers/me/jornada/end", token)
-            driver_log(name, "¡Jornada finalizada con éxito! Su ruta se ha archivado 🔴")
+            driver_log(name, "¡Jornada de trabajo finalizada y cerrada! 🔴 (Ruta archivada)")
         except Exception as e:
-            warn(f"No se pudo cerrar la jornada para {name}: {e}")
+            warn(f"No se pudo cerrar la jornada laboral para {name}: {e}")
 
-    wait(1)
+    # Mostrar tablas de estado final
+    print_status_table(central_token)
 
-    print(f"\n{C.BOLD}{'═' * 60}{C.RESET}")
-    print(f"{C.BOLD}{C.GREEN}   ✅ SIMULACIÓN COMPLETADA CON ÉXITO{C.RESET}")
-    print(f"{C.BOLD}{'═' * 60}{C.RESET}")
-    print(f"\n{C.GRAY}Abre la app para ver los cambios reflejados en tiempo real.")
-    print(f"Los KPIs aparecen en: Perfil del conductor y Analytics de la central.{C.RESET}\n")
+    print(f"\n{C.BOLD}{'═' * 70}{C.RESET}")
+    print(f"{C.BOLD}{C.GREEN}   🎉 SIMULACIÓN COMPLETADA Y MEJORADA CON ÉXITO{C.RESET}")
+    print(f"{C.BOLD}{'═' * 70}{C.RESET}")
+    print(f"\n{C.GRAY}Los cambios se han guardado en la base de datos.")
+    print(f"Puedes ver la jornada y métricas en las pantallas de Analytics de la central.")
+    print(f"El modo interactivo te permitió controlar los eventos de despacho a tu propio ritmo.{C.RESET}\n")
 
 
 if __name__ == "__main__":
@@ -430,9 +641,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print(f"\n{C.YELLOW}Simulación cancelada por el usuario.{C.RESET}")
     except requests.HTTPError as e:
-        print(f"\n{C.RED}Error HTTP: {e.response.status_code} — {e.response.text}{C.RESET}")
+        print(f"\n{C.RED}Error de red / API: {e.response.status_code} — {e.response.text}{C.RESET}")
         sys.exit(1)
     except Exception as e:
-        print(f"\n{C.RED}Error: {e}{C.RESET}")
+        print(f"\n{C.RED}Error inesperado en la ejecución: {e}{C.RESET}")
         sys.exit(1)
-

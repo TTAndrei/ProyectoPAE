@@ -20,6 +20,54 @@ class CentralMapScreen extends StatefulWidget {
 
 class _CentralMapScreenState extends State<CentralMapScreen> {
   String? _selectedDriverId;
+  final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    _centerMapOnVisiblePoints();
+  }
+
+  void _centerMapOnVisiblePoints() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final centralProv = context.read<CentralProvider>();
+      final orderProv = context.read<OrderProvider>();
+      final routeProv = context.read<RouteProvider>();
+
+      final drivers = centralProv.drivers;
+      final activeAssignedOrders = orderProv.activeAssignedOrders;
+      final routePlansByDriver = orderProv.routePlansByDriver;
+      final selectedDriverId = drivers.any((d) => d.id == _selectedDriverId) ? _selectedDriverId : null;
+
+      final driversWithLocation = drivers.where((d) => d.lat != null && d.lng != null).toList();
+      final visibleDrivers = selectedDriverId == null
+          ? driversWithLocation
+          : driversWithLocation.where((d) => d.id == selectedDriverId).toList();
+      final visibleOrders = selectedDriverId == null
+          ? activeAssignedOrders
+          : activeAssignedOrders.where((order) => order.assignedDriverId == selectedDriverId).toList();
+      final visibleRoutePlans = selectedDriverId == null
+          ? routePlansByDriver
+          : Map.fromEntries(
+              routePlansByDriver.entries.where((entry) => entry.key == selectedDriverId),
+            );
+
+      final pts = <LatLng>[
+        for (final driver in visibleDrivers) LatLng(driver.lat!, driver.lng!),
+        for (final order in visibleOrders) LatLng(order.lat, order.lng),
+        for (final plan in visibleRoutePlans.values)
+          if (!routeProv.isSparseRouteGeometry(plan))
+            ...plan.routeGeometry.map((point) => LatLng(point.lat, point.lng)),
+      ];
+
+      if (pts.isNotEmpty) {
+        final center = _mapCenter(pts);
+        final zoom = _zoomForPoints(pts);
+        _mapController.move(center, zoom);
+      }
+    });
+  }
 
   static const List<Color> _driverPalette = [
     AppTheme.secondary,
@@ -104,12 +152,14 @@ class _CentralMapScreenState extends State<CentralMapScreen> {
     setState(() {
       _selectedDriverId = _selectedDriverId == driverId ? null : driverId;
     });
+    _centerMapOnVisiblePoints();
   }
 
   void _showAllDrivers() {
     setState(() {
       _selectedDriverId = null;
     });
+    _centerMapOnVisiblePoints();
   }
 
   @override
@@ -233,8 +283,8 @@ class _CentralMapScreenState extends State<CentralMapScreen> {
                     )
                   else
                     FlutterMap(
-                      key: ValueKey(
-                          'central-map-${selectedDriverId ?? 'all'}-${points.length}'),
+                      mapController: _mapController,
+                      key: const ValueKey('central-map'),
                       options: MapOptions(
                         initialCenter: center,
                         initialZoom: zoom,

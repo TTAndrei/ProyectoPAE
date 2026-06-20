@@ -106,7 +106,7 @@ class CreateOrderInput {
     required this.address,
     required this.lat,
     required this.lng,
-    required this.driverId,
+    this.driverId,
     this.name,
     this.incoterm,
     this.origen,
@@ -125,7 +125,7 @@ class CreateOrderInput {
 
   final String type;
   final String? name;
-  final String driverId;
+  final String? driverId;
   final String address;
   final double lat;
   final double lng;
@@ -147,7 +147,7 @@ class CreateOrderInput {
     return {
       'type': type,
       if (name != null && name!.isNotEmpty) 'name': name,
-      'driver_id': driverId,
+      if (driverId != null && driverId!.isNotEmpty) 'driver_id': driverId,
       'address': address,
       'lat': lat,
       'lng': lng,

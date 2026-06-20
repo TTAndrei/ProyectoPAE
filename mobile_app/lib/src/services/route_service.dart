@@ -15,15 +15,8 @@ class RouteService {
     return _apiClient.getRoutePlan(token: token, driverId: driverId);
   }
 
-  /// Returns `true` when the geometry has too few points to be a real street-level route.
-  ///
-  /// Uses strict `<` (not `<=`) so that a fallback straight-line with exactly
-  /// [orders.length + 1] points is still considered drawable.
   bool isSparseRouteGeometry(DriverRoutePlan plan) {
-    if (plan.routeGeometry.length < 2) return true;
-    final minimumWaypointCount =
-        plan.orders.isEmpty ? 0 : plan.orders.length + 1;
-    return plan.routeGeometry.length < minimumWaypointCount;
+    return plan.routeGeometry.length < 2;
   }
 
   /// Keeps the richer geometry when the incoming one is sparse but

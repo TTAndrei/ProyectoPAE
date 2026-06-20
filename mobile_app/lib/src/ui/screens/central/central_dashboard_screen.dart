@@ -259,18 +259,18 @@ class CentralDashboardScreen extends StatelessWidget {
           );
 
           if (isWide) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                headerWidget,
-                const SizedBox(height: 32),
-                metricsGrid,
-                const SizedBox(height: 32),
-                simulationCard,
-                const SizedBox(height: 32),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  headerWidget,
+                  const SizedBox(height: 32),
+                  metricsGrid,
+                  const SizedBox(height: 32),
+                  simulationCard,
+                  const SizedBox(height: 32),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         flex: 3,
@@ -283,8 +283,8 @@ class CentralDashboardScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
             );
           } else {
             // Mobile portrait or narrow views: everything scrollable in a single ListView
