@@ -73,8 +73,8 @@ async def test_listar_pedidos_central(cliente, token_central):
         json={
             "type": "pickup",
             "address": "Pedido listado prueba",
-            "lat": 40.42,
-            "lng": -3.7,
+            "lat": 41.6262,
+            "lng": 2.6908,
         },
         headers={"Authorization": f"Bearer {token_central}"},
     )
@@ -94,7 +94,7 @@ async def test_crear_pedido_central(cliente, token_central):
     """La central debe poder crear un nuevo pedido con estado 'pending'."""
     respuesta = await cliente.post(
         "/orders/",
-        json={"type": "pickup", "address": "Calle Prueba 1", "lat": 40.42, "lng": -3.7},
+        json={"type": "pickup", "address": "Calle Prueba 1", "lat": 41.6262, "lng": 2.6908},
         headers={"Authorization": f"Bearer {token_central}"},
     )
     assert respuesta.status_code == 201
@@ -110,8 +110,8 @@ async def test_crear_pedido_respeta_repartidor_elegido(cliente, token_central):
         json={
             "type": "pickup",
             "address": "Asignacion manual de prueba",
-            "lat": 40.42,
-            "lng": -3.7,
+            "lat": 41.6262,
+            "lng": 2.6908,
             "driver_id": "driver-2",
         },
         headers={"Authorization": f"Bearer {token_central}"},
@@ -126,7 +126,7 @@ async def test_crear_pedido_repartidor_prohibido(cliente, token_repartidor1):
     """Un repartidor no debe poder crear pedidos (403 Forbidden)."""
     respuesta = await cliente.post(
         "/orders/",
-        json={"type": "pickup", "address": "Prueba", "lat": 40.42, "lng": -3.7},
+        json={"type": "pickup", "address": "Prueba", "lat": 41.6262, "lng": 2.6908},
         headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
     assert respuesta.status_code == 403
@@ -136,7 +136,7 @@ async def test_crear_pedido_tipo_invalido(cliente, token_central):
     """Un tipo de pedido no válido debe devolver 422 Unprocessable Entity."""
     respuesta = await cliente.post(
         "/orders/",
-        json={"type": "invalido", "address": "Prueba", "lat": 40.42, "lng": -3.7},
+        json={"type": "invalido", "address": "Prueba", "lat": 41.6262, "lng": 2.6908},
         headers={"Authorization": f"Bearer {token_central}"},
     )
     assert respuesta.status_code == 422
@@ -147,7 +147,7 @@ async def test_asignar_pedido(cliente, token_central):
     # Primero crear un pedido pendiente
     respuesta_crear = await cliente.post(
         "/orders/",
-        json={"type": "pickup", "address": "Asignación de prueba", "lat": 40.42, "lng": -3.71},
+        json={"type": "pickup", "address": "Asignación de prueba", "lat": 41.6262, "lng": 2.6882},
         headers={"Authorization": f"Bearer {token_central}"},
     )
     id_pedido = respuesta_crear.json()["id"]
@@ -168,7 +168,7 @@ async def test_responder_pedido_aceptar(cliente, token_central, token_repartidor
     """El repartidor debe poder aceptar una recogida asignada."""
     respuesta_crear = await cliente.post(
         "/orders/",
-        json={"type": "pickup", "address": "Aceptar prueba", "lat": 40.43, "lng": -3.69},
+        json={"type": "pickup", "address": "Aceptar prueba", "lat": 41.6271, "lng": 2.6819},
         headers={"Authorization": f"Bearer {token_central}"},
     )
     id_pedido = respuesta_crear.json()["id"]
@@ -194,7 +194,7 @@ async def test_responder_pedido_rechazar(cliente, token_central, token_repartido
     """El repartidor debe poder rechazar una recogida asignada."""
     respuesta_crear = await cliente.post(
         "/orders/",
-        json={"type": "pickup", "address": "Rechazar prueba", "lat": 40.43, "lng": -3.69},
+        json={"type": "pickup", "address": "Rechazar prueba", "lat": 41.6271, "lng": 2.6819},
         headers={"Authorization": f"Bearer {token_central}"},
     )
     id_pedido = respuesta_crear.json()["id"]
@@ -241,21 +241,92 @@ async def test_actualizar_ubicacion_repartidor(cliente, token_repartidor1):
     """El repartidor debe poder actualizar su propia ubicación GPS."""
     respuesta = await cliente.put(
         "/drivers/driver-1/location",
-        json={"lat": 40.42, "lng": -3.71, "heading": 90.0},
+        json={"lat": 41.6262, "lng": 2.6882, "heading": 90.0},
         headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
     assert respuesta.status_code == 200
     assert respuesta.json()["success"] is True
 
 
+async def test_central_puede_actualizar_ubicacion_repartidor(cliente, token_central):
+    """La central puede corregir manualmente la ubicación de un repartidor."""
+    respuesta = await cliente.put(
+        "/drivers/driver-1/location",
+        json={"lat": 41.6262, "lng": 2.6882, "heading": 45.0},
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert respuesta.status_code == 200
+    assert respuesta.json()["success"] is True
+
+    ubicacion = await cliente.get(
+        "/drivers/driver-1/location",
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert ubicacion.status_code == 200
+    assert ubicacion.json()["lat"] == 41.6262
+    assert ubicacion.json()["lng"] == 2.6882
+
+
 async def test_actualizar_ubicacion_otro_repartidor_prohibido(cliente, token_repartidor1):
     """Un repartidor no debe poder actualizar la ubicación de otro (403)."""
     respuesta = await cliente.put(
         "/drivers/driver-2/location",
-        json={"lat": 40.42, "lng": -3.71},
+        json={"lat": 41.6262, "lng": 2.6882},
         headers={"Authorization": f"Bearer {token_repartidor1}"},
     )
     assert respuesta.status_code == 403
+
+
+async def test_central_puede_eliminar_repartidor(cliente, token_central):
+    """La central puede eliminar un repartidor y sus pedidos vuelven a pendientes."""
+    username = "driver-delete-test"
+    create = await cliente.post(
+        "/auth/register",
+        json={
+            "username": username,
+            "password": "driver123",
+            "role": "repartidor",
+            "name": "Driver Delete Test",
+        },
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert create.status_code == 201
+    driver_id = create.json()["id"]
+
+    order = await cliente.post(
+        "/orders/",
+        json={
+            "type": "pickup",
+            "address": "Prueba eliminación Pineda",
+            "lat": 41.6262,
+            "lng": 2.6908,
+            "driver_id": driver_id,
+        },
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert order.status_code == 201
+    order_id = order.json()["id"]
+
+    delete = await cliente.delete(
+        f"/drivers/{driver_id}",
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert delete.status_code == 200
+    assert delete.json()["success"] is True
+
+    drivers = await cliente.get(
+        "/drivers/",
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    assert all(driver["id"] != driver_id for driver in drivers.json())
+
+    orders = await cliente.get(
+        "/orders/",
+        headers={"Authorization": f"Bearer {token_central}"},
+    )
+    released = next(item for item in orders.json() if item["id"] == order_id)
+    assert released["status"] == "pending"
+    assert released["assigned_driver_id"] is None
 
 
 # ── Rutas ─────────────────────────────────────────────────────────────────────

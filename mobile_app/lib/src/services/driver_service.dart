@@ -44,6 +44,14 @@ class DriverService {
     );
   }
 
+  /// Deletes a driver and releases their active orders.
+  Future<void> deleteDriver({
+    required String token,
+    required String driverId,
+  }) {
+    return _apiClient.deleteDriver(token: token, driverId: driverId);
+  }
+
   /// Updates a driver's availability.
   Future<void> updateDriverAvailability({
     required String token,

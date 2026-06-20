@@ -33,6 +33,7 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
   static const Color _possibleColor = AppTheme.primary;
 
   final MapController _mapController = MapController();
+  LatLng? _lastCenteredLocation;
 
   @override
   void initState() {
@@ -43,12 +44,15 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
     });
   }
 
+
   void _centerOnKnownDriver() {
     final location = context.read<DriverProvider>().driverLocation;
     if (location == null || !mounted) return;
 
+    final latLng = LatLng(location.lat, location.lng);
+    _lastCenteredLocation = latLng;
     _mapController.move(
-      LatLng(location.lat, location.lng),
+      latLng,
       14.5,
     );
   }
@@ -58,8 +62,10 @@ class _DriverMapScreenState extends State<DriverMapScreen> {
     try {
       final position = await driverProv.getCurrentLocation();
       if (position != null && mounted) {
+        final latLng = LatLng(position.latitude, position.longitude);
+        _lastCenteredLocation = latLng;
         _mapController.move(
-          LatLng(position.latitude, position.longitude),
+          latLng,
           14.5,
         );
       }

@@ -10,6 +10,7 @@ import '../../providers/route_provider.dart';
 import '../../services/driver_service.dart';
 import '../../services/order_service.dart';
 import '../../services/route_service.dart';
+import '../../services/simulation_service.dart';
 import '../../state/session_controller.dart';
 import '../../theme/app_theme.dart';
 import 'central/central_page.dart';
@@ -33,6 +34,7 @@ class HomePage extends StatelessWidget {
     final orderService = context.read<OrderService>();
     final driverService = context.read<DriverService>();
     final routeService = context.read<RouteService>();
+    final simulationService = context.read<SimulationService>();
 
     return Scaffold(
       appBar: AppBar(
@@ -52,28 +54,35 @@ class HomePage extends StatelessWidget {
         ],
       ),
       body: user.role == 'central'
-          ? MultiProvider(
-              providers: [
-                ChangeNotifierProvider<OrderProvider>(
-                  create: (_) => OrderProvider(
-                    orderService: orderService,
-                    routeService: routeService,
-                    token: token,
-                    apiBaseUrl: AppConfig.apiBaseUrl,
-                  ),
-                ),
-                ChangeNotifierProvider<CentralProvider>(
-                  create: (_) => CentralProvider(
-                    driverService: driverService,
-                    token: token,
-                    apiBaseUrl: AppConfig.apiBaseUrl,
-                  ),
-                ),
-                ChangeNotifierProvider<RouteProvider>(
-                  create: (_) => RouteProvider(routeService: routeService),
-                ),
-              ],
-              child: const CentralPage(),
+          ? ChangeNotifierProvider<CentralProvider>(
+              create: (_) => CentralProvider(
+                driverService: driverService,
+                simulationService: simulationService,
+                token: token,
+                apiBaseUrl: AppConfig.apiBaseUrl,
+              ),
+              child: Builder(
+                builder: (centralCtx) {
+                  final centralProv = centralCtx.read<CentralProvider>();
+                  return MultiProvider(
+                    providers: [
+                      ChangeNotifierProvider<OrderProvider>(
+                        create: (_) => OrderProvider(
+                          orderService: orderService,
+                          routeService: routeService,
+                          token: token,
+                          apiBaseUrl: AppConfig.apiBaseUrl,
+                          refreshStream: centralProv.wsRefreshStream,
+                        ),
+                      ),
+                      ChangeNotifierProvider<RouteProvider>(
+                        create: (_) => RouteProvider(routeService: routeService),
+                      ),
+                    ],
+                    child: const CentralPage(),
+                  );
+                },
+              ),
             )
           : _buildDriverProviders(
               orderService: orderService,

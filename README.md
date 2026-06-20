@@ -180,6 +180,71 @@ Para detener rapido los procesos y navegadores abiertos por el script:
 powershell -ExecutionPolicy Bypass -File .\scripts\stop-demo.ps1
 ```
 
+### Ubuntu/Linux (Flutter Web)
+
+En Linux el flujo de demo es independiente del flujo Windows: usa Flutter Web,
+FastAPI y una instancia local de Neo4j ya iniciada. Los scripts crean
+`backend/.venv` con `python3` y, si Flutter no existe en PATH, descargan el SDK
+estable en `~/.local/share/flutter` sin requerir una instalacion global.
+
+Primera preparacion:
+
+```bash
+bash scripts/setup-linux.sh
+```
+
+El setup instala dependencias backend, ejecuta `flutter pub get` y verifica que
+Neo4j escuche por Bolt. No instala ni configura Neo4j automaticamente. Por
+defecto se espera:
+
+- Bolt: `bolt://127.0.0.1:7687`
+- Usuario: `neo4j`
+- Contrasena: `12345678`
+- Base de datos: `neo4j`
+
+Si Neo4j no esta levantado, inicia tu servicio/instancia local y repite el
+comando. En Ubuntu puedes seguir la guia oficial:
+<https://neo4j.com/docs/operations-manual/current/installation/linux/debian/>.
+
+Arrancar la demo web:
+
+```bash
+bash scripts/start-demo-linux.sh --force-restart
+```
+
+Arrancar sin abrir navegador automaticamente:
+
+```bash
+bash scripts/start-demo-linux.sh --no-launch
+```
+
+Por defecto:
+
+- Backend: `http://127.0.0.1:8000`
+- Healthcheck: `http://127.0.0.1:8000/health`
+- Frontend Flutter Web: `http://localhost:8081`
+- Estado runtime: `scripts/.demo-state-linux.json`
+- Logs runtime: `scripts/.demo-logs/`
+
+Parametros utiles:
+
+```bash
+# Cambiar URL de API embebida en Flutter Web
+bash scripts/start-demo-linux.sh --api-base-url http://localhost:8000
+
+# Cambiar puertos locales
+bash scripts/start-demo-linux.sh --backend-port 8000 --frontend-port 8081
+
+# Detener la sesion Linux
+bash scripts/stop-demo-linux.sh
+```
+
+Si el script instalo Flutter localmente, puedes diagnosticarlo con:
+
+```bash
+$HOME/.local/share/flutter/bin/flutter doctor -v
+```
+
 ## Usuarios demo
 
 | Usuario | Contrasena | Rol |
@@ -200,7 +265,7 @@ pytest -v
 | Variable | Defecto | Descripcion |
 | -------- | ------- | ----------- |
 | `SECRET_KEY` | `pae_dev_secret_cambiar_en_produccion` | Clave JWT |
-| `NEO4J_URI` | `neo4j://127.0.0.1:7687` | URI de conexión a Neo4j |
+| `NEO4J_URI` | `bolt://127.0.0.1:7687` | URI de conexión a Neo4j |
 | `NEO4J_USER` | `neo4j` | Usuario de la base de datos |
 | `NEO4J_PASSWORD` | `12345678` | Contraseña de la base de datos |
 | `NEO4J_DATABASE` | `neo4j` | Nombre de la base de datos |

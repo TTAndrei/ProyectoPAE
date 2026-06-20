@@ -11,8 +11,63 @@ import '../../widgets/app_empty_card.dart';
 import '../../widgets/app_map_pin_icon.dart';
 import '../../widgets/app_legend_items.dart';
 
-class CentralMapScreen extends StatelessWidget {
+class CentralMapScreen extends StatefulWidget {
   const CentralMapScreen({super.key});
+
+  @override
+  State<CentralMapScreen> createState() => _CentralMapScreenState();
+}
+
+class _CentralMapScreenState extends State<CentralMapScreen> {
+  String? _selectedDriverId;
+  final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    _centerMapOnVisiblePoints();
+  }
+
+  void _centerMapOnVisiblePoints() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final centralProv = context.read<CentralProvider>();
+      final orderProv = context.read<OrderProvider>();
+      final routeProv = context.read<RouteProvider>();
+
+      final drivers = centralProv.drivers;
+      final activeAssignedOrders = orderProv.activeAssignedOrders;
+      final routePlansByDriver = orderProv.routePlansByDriver;
+      final selectedDriverId = drivers.any((d) => d.id == _selectedDriverId) ? _selectedDriverId : null;
+
+      final driversWithLocation = drivers.where((d) => d.lat != null && d.lng != null).toList();
+      final visibleDrivers = selectedDriverId == null
+          ? driversWithLocation
+          : driversWithLocation.where((d) => d.id == selectedDriverId).toList();
+      final visibleOrders = selectedDriverId == null
+          ? activeAssignedOrders
+          : activeAssignedOrders.where((order) => order.assignedDriverId == selectedDriverId).toList();
+      final visibleRoutePlans = selectedDriverId == null
+          ? routePlansByDriver
+          : Map.fromEntries(
+              routePlansByDriver.entries.where((entry) => entry.key == selectedDriverId),
+            );
+
+      final pts = <LatLng>[
+        for (final driver in visibleDrivers) LatLng(driver.lat!, driver.lng!),
+        for (final order in visibleOrders) LatLng(order.lat, order.lng),
+        for (final plan in visibleRoutePlans.values)
+          if (!routeProv.isSparseRouteGeometry(plan))
+            ...plan.routeGeometry.map((point) => LatLng(point.lat, point.lng)),
+      ];
+
+      if (pts.isNotEmpty) {
+        final center = _mapCenter(pts);
+        final zoom = _zoomForPoints(pts);
+        _mapController.move(center, zoom);
+      }
+    });
+  }
 
   static const List<Color> _driverPalette = [
     AppTheme.secondary,
@@ -46,7 +101,9 @@ class CentralMapScreen extends StatelessWidget {
   }
 
   LatLng _mapCenter(List<LatLng> points) {
-    if (points.isEmpty) return const LatLng(41.6260, 2.6900); // Centered in Pineda de Mar
+    if (points.isEmpty) {
+      return const LatLng(41.6260, 2.6900); // Centered in Pineda de Mar
+    }
 
     var minLat = points.first.latitude;
     var maxLat = points.first.latitude;
@@ -91,6 +148,20 @@ class CentralMapScreen extends StatelessWidget {
     return 13.5;
   }
 
+  void _selectDriver(String driverId) {
+    setState(() {
+      _selectedDriverId = _selectedDriverId == driverId ? null : driverId;
+    });
+    _centerMapOnVisiblePoints();
+  }
+
+  void _showAllDrivers() {
+    setState(() {
+      _selectedDriverId = null;
+    });
+    _centerMapOnVisiblePoints();
+  }
+
   @override
   Widget build(BuildContext context) {
     final centralProv = context.watch<CentralProvider>();
@@ -101,24 +172,44 @@ class CentralMapScreen extends StatelessWidget {
     final activeAssignedOrders = orderProv.activeAssignedOrders;
     final routePlansByDriver = orderProv.routePlansByDriver;
     final driverColors = _driverColors(drivers);
+    final selectedDriverId =
+        drivers.any((driver) => driver.id == _selectedDriverId)
+            ? _selectedDriverId
+            : null;
 
-    final driversWithLocation = drivers.where((d) => d.lat != null && d.lng != null).toList();
+    final driversWithLocation =
+        drivers.where((d) => d.lat != null && d.lng != null).toList();
+    final visibleDrivers = selectedDriverId == null
+        ? driversWithLocation
+        : driversWithLocation.where((d) => d.id == selectedDriverId).toList();
+    final visibleOrders = selectedDriverId == null
+        ? activeAssignedOrders
+        : activeAssignedOrders
+            .where((order) => order.assignedDriverId == selectedDriverId)
+            .toList();
+    final visibleRoutePlans = selectedDriverId == null
+        ? routePlansByDriver
+        : Map.fromEntries(
+            routePlansByDriver.entries
+                .where((entry) => entry.key == selectedDriverId),
+          );
 
     final points = <LatLng>[
-      for (final driver in driversWithLocation) LatLng(driver.lat!, driver.lng!),
-      for (final order in activeAssignedOrders) LatLng(order.lat, order.lng),
-      for (final plan in routePlansByDriver.values)
+      for (final driver in visibleDrivers) LatLng(driver.lat!, driver.lng!),
+      for (final order in visibleOrders) LatLng(order.lat, order.lng),
+      for (final plan in visibleRoutePlans.values)
         if (!routeProv.isSparseRouteGeometry(plan))
           ...plan.routeGeometry.map((point) => LatLng(point.lat, point.lng)),
     ];
 
     final polylines = <Polyline>[];
-    for (final driver in driversWithLocation) {
+    for (final driver in visibleDrivers) {
       final color = driverColors[driver.id] ?? _driverPalette.first;
       final plan = routePlansByDriver[driver.id];
       if (plan == null || routeProv.isSparseRouteGeometry(plan)) continue;
 
-      final routePoints = plan.routeGeometry.map((p) => LatLng(p.lat, p.lng)).toList();
+      final routePoints =
+          plan.routeGeometry.map((p) => LatLng(p.lat, p.lng)).toList();
       if (routePoints.length < 2) continue;
 
       polylines.add(
@@ -131,7 +222,7 @@ class CentralMapScreen extends StatelessWidget {
     }
 
     final markers = <Marker>[
-      for (final driver in driversWithLocation)
+      for (final driver in visibleDrivers)
         Marker(
           point: LatLng(driver.lat!, driver.lng!),
           width: 48,
@@ -141,14 +232,16 @@ class CentralMapScreen extends StatelessWidget {
             color: driverColors[driver.id] ?? _driverPalette.first,
           ),
         ),
-      for (final order in activeAssignedOrders)
+      for (final order in visibleOrders)
         Marker(
           point: LatLng(order.lat, order.lng),
           width: 40,
           height: 40,
           child: AppMapPinIcon(
             icon: _orderTypeIcon(order.type),
-            color: (driverColors[order.assignedDriverId] ?? _driverPalette.first).withValues(alpha: 0.8),
+            color:
+                (driverColors[order.assignedDriverId] ?? _driverPalette.first)
+                    .withValues(alpha: 0.8),
           ),
         ),
     ];
@@ -166,10 +259,14 @@ class CentralMapScreen extends StatelessWidget {
             children: [
               Text(
                 'Monitorización de Flota',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppTheme.secondary),
+                style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.secondary),
               ),
               SizedBox(height: 4),
-              Text('Posicionamiento GPS y rutas activas en tiempo real', style: TextStyle(color: Colors.grey)),
+              Text('Posicionamiento GPS y rutas activas en tiempo real',
+                  style: TextStyle(color: Colors.grey)),
             ],
           ),
           const SizedBox(height: 24),
@@ -181,10 +278,13 @@ class CentralMapScreen extends StatelessWidget {
                 children: [
                   if (points.isEmpty)
                     AppEmptyCard(
-                      message: 'No hay ubicaciones de conductores/pedidos para mostrar en mapa.',
+                      message:
+                          'No hay ubicaciones de conductores/pedidos para mostrar en mapa.',
                     )
                   else
                     FlutterMap(
+                      mapController: _mapController,
+                      key: const ValueKey('central-map'),
                       options: MapOptions(
                         initialCenter: center,
                         initialZoom: zoom,
@@ -193,10 +293,12 @@ class CentralMapScreen extends StatelessWidget {
                       ),
                       children: [
                         TileLayer(
-                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                           userAgentPackageName: 'com.pae.mobile',
                         ),
-                        if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
+                        if (polylines.isNotEmpty)
+                          PolylineLayer(polylines: polylines),
                         MarkerLayer(markers: markers),
                       ],
                     ),
@@ -214,13 +316,43 @@ class CentralMapScreen extends StatelessWidget {
                           spacing: 16,
                           runSpacing: 8,
                           children: [
+                            OutlinedButton.icon(
+                              onPressed: selectedDriverId == null
+                                  ? null
+                                  : _showAllDrivers,
+                              icon: const Icon(Icons.public_rounded, size: 18),
+                              label: const Text('Vista general'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.secondary,
+                                disabledForegroundColor: AppTheme.secondary,
+                                backgroundColor: selectedDriverId == null
+                                    ? AppTheme.secondary.withValues(alpha: 0.08)
+                                    : Colors.white,
+                                side: BorderSide(
+                                  color: selectedDriverId == null
+                                      ? AppTheme.secondary
+                                      : AppTheme.secondary
+                                          .withValues(alpha: 0.28),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 15),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
                             ...drivers.map((driver) {
-                              final count = activeAssignedOrders.where((o) => o.assignedDriverId == driver.id).length;
-                              final color = driverColors[driver.id] ?? _driverPalette.first;
+                              final count = activeAssignedOrders
+                                  .where((o) => o.assignedDriverId == driver.id)
+                                  .length;
+                              final color = driverColors[driver.id] ??
+                                  _driverPalette.first;
                               return AppDriverLegendItem(
                                 color: color,
                                 label: driver.name,
                                 detail: '$count pedidos',
+                                isSelected: selectedDriverId == driver.id,
+                                onTap: () => _selectDriver(driver.id),
                               );
                             }),
                             const AppOrderTypeLegendItem(

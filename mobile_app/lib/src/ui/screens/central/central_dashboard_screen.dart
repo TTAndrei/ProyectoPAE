@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../models/driver_model.dart';
 import '../../../providers/central_provider.dart';
 import '../../../providers/order_provider.dart';
 import '../../../theme/app_theme.dart';
@@ -22,6 +23,7 @@ class CentralDashboardScreen extends StatelessWidget {
         drivers.where((d) => d.lat != null && d.lng != null).length;
     final completedOrdersCount =
         orders.where((o) => o.status == 'completed').length;
+    final simulationCard = _buildSimulationCard(context, centralProv);
 
     return Padding(
       padding: const EdgeInsets.all(32),
@@ -257,16 +259,18 @@ class CentralDashboardScreen extends StatelessWidget {
           );
 
           if (isWide) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                headerWidget,
-                const SizedBox(height: 32),
-                metricsGrid,
-                const SizedBox(height: 32),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  headerWidget,
+                  const SizedBox(height: 32),
+                  metricsGrid,
+                  const SizedBox(height: 32),
+                  simulationCard,
+                  const SizedBox(height: 32),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         flex: 3,
@@ -279,8 +283,8 @@ class CentralDashboardScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
             );
           } else {
             // Mobile portrait or narrow views: everything scrollable in a single ListView
@@ -291,6 +295,8 @@ class CentralDashboardScreen extends StatelessWidget {
                 const SizedBox(height: 24),
                 metricsGrid,
                 const SizedBox(height: 24),
+                simulationCard,
+                const SizedBox(height: 24),
                 fleetStatusCard,
                 const SizedBox(height: 24),
                 performanceCard,
@@ -298,6 +304,421 @@ class CentralDashboardScreen extends StatelessWidget {
             );
           }
         },
+      ),
+    );
+  }
+
+  Widget _buildSimulationCard(
+    BuildContext context,
+    CentralProvider centralProv,
+  ) {
+    final status = centralProv.simulationStatus;
+    final kpis = centralProv.simulationKpis ?? status?.kpis;
+    final isLoading = centralProv.isSimulationLoading;
+    final isRunning = status?.isRunning == true;
+    final currentStop = status?.currentStop;
+    final selected = centralProv.selectedSimulation;
+    final isRerouting = selected == 'rerouting';
+    final totalFallback = isRerouting ? 3 : 20;
+    final driverLabel = status?.driverId ?? 'driver-demo';
+
+    return Card(
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.route_rounded,
+                    color: AppTheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Simulaciones de ruta',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.secondary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isRerouting
+                            ? '$driverLabel · rerouting dinámico · ${status?.statusLabel ?? 'Inactiva'}'
+                            : '$driverLabel · 20 recogidas demo · ${status?.statusLabel ?? 'Inactiva'}',
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  status?.progressLabel ?? '0/$totalFallback',
+                  style: const TextStyle(
+                    color: AppTheme.secondary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  selected: selected == 'route-20',
+                  label: const Text('Ruta 20'),
+                  onSelected: isLoading
+                      ? null
+                      : (_) => _runSimulationAction(
+                            context,
+                            () => context
+                                .read<CentralProvider>()
+                                .selectSimulation('route-20'),
+                            'Estado de Ruta 20 cargado',
+                            reloadOrders: false,
+                          ),
+                ),
+                ChoiceChip(
+                  selected: selected == 'rerouting',
+                  label: const Text('Rerouting demo'),
+                  onSelected: isLoading
+                      ? null
+                      : (_) => _runSimulationAction(
+                            context,
+                            () => context
+                                .read<CentralProvider>()
+                                .selectSimulation('rerouting'),
+                            'Estado de rerouting cargado',
+                            reloadOrders: false,
+                          ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: status?.progressValue ?? 0.0,
+                minHeight: 8,
+                backgroundColor: Colors.grey.withValues(alpha: 0.14),
+                color: isRunning ? Colors.green : AppTheme.primary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              currentStop == null
+                  ? 'Parada actual: sin parada activa'
+                  : 'Parada actual: ${currentStop.name ?? currentStop.address}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            if (status?.error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                status!.error!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                AppButton(
+                  onPressed: isRunning || isLoading
+                      ? null
+                      : () => _runSimulationAction(
+                            context,
+                            () => isRerouting
+                                ? context
+                                    .read<CentralProvider>()
+                                    .startReroutingSimulation()
+                                : context
+                                    .read<CentralProvider>()
+                                    .startRoute20Simulation(),
+                            'Simulación iniciada',
+                          ),
+                  icon: Icons.play_arrow_rounded,
+                  text: isRerouting ? 'Iniciar rerouting' : 'Iniciar Ruta 20',
+                  isLoading: isLoading && !isRunning,
+                ),
+                AppButton(
+                  onPressed: isLoading
+                      ? null
+                      : () => _runSimulationAction(
+                            context,
+                            () async {
+                              await context
+                                  .read<CentralProvider>()
+                                  .loadSimulationKpis();
+                            },
+                            'KPIs actualizados',
+                          ),
+                  icon: Icons.analytics_rounded,
+                  text: 'Consultar KPIs',
+                  variant: AppButtonVariant.outlined,
+                ),
+                AppButton(
+                  onPressed: isLoading
+                      ? null
+                      : () => _runSimulationAction(
+                            context,
+                            () => isRerouting
+                                ? context
+                                    .read<CentralProvider>()
+                                    .resetReroutingSimulation()
+                                : context
+                                    .read<CentralProvider>()
+                                    .resetRoute20Simulation(),
+                            'Simulación reseteada',
+                          ),
+                  icon: Icons.restart_alt_rounded,
+                  text: 'Reset',
+                  variant: AppButtonVariant.outlined,
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _buildSimulationKpis(kpis),
+            if (status?.comparison != null) ...[
+              const SizedBox(height: 18),
+              _buildComparison(status!.comparison!),
+            ],
+            if (status?.events.isNotEmpty == true) ...[
+              const SizedBox(height: 18),
+              _buildRerouteEvents(status!.events),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _runSimulationAction(
+    BuildContext context,
+    Future<void> Function() action,
+    String successMessage,
+    {bool reloadOrders = true}
+  ) async {
+    try {
+      await action();
+      if (!context.mounted) return;
+      if (reloadOrders) {
+        await context.read<OrderProvider>().loadOrders();
+      }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(successMessage)),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error de simulación: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildComparison(comparison) {
+    final savings = comparison.savingsKm.toStringAsFixed(2);
+    final savingsPercent = comparison.savingsPercent.toStringAsFixed(1);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Comparativa rerouting vs FIFO',
+          style: TextStyle(
+            color: AppTheme.secondary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _buildKpiPill(
+              'Ruta dinámica',
+              '${comparison.dynamicDistanceKm.toStringAsFixed(2)} km',
+            ),
+            _buildKpiPill(
+              'FIFO estimada',
+              '${comparison.fifoDistanceKm.toStringAsFixed(2)} km',
+            ),
+            _buildKpiPill('Ahorro', '$savings km · $savingsPercent%'),
+            _buildKpiPill(
+              'Activos/completados',
+              '${comparison.activeOrderCount}/${comparison.completedOrderCount}',
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Orden dinámico: ${comparison.dynamicOrderIds.join(' → ')}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Orden FIFO: ${comparison.fifoOrderIds.join(' → ')}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRerouteEvents(List events) {
+    final visibleEvents = events.length > 3 ? events.sublist(events.length - 3) : events;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Inserciones dinámicas',
+          style: TextStyle(
+            color: AppTheme.secondary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...visibleEvents.map(
+          (event) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.alt_route_rounded,
+                  size: 16,
+                  color: AppTheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        event.message.isEmpty
+                            ? 'Pedido ${event.orderId} insertado'
+                            : event.message,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (event.previousOrderIds.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Antes: ${event.previousOrderIds.join(' → ')}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                      if (event.newOrderIds.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Ahora: ${event.newOrderIds.join(' → ')}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimulationKpis(DriverKpiModel? kpis) {
+    if (kpis == null) {
+      return const Text(
+        'KPIs no cargados',
+        style: TextStyle(color: Colors.grey, fontSize: 12),
+      );
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        _buildKpiPill('Eficiencia carga', kpis.loadEfficiencyLabel),
+        _buildKpiPill('Km cargados/total', kpis.loadDistanceLabel),
+        _buildKpiPill(
+          'Activos/completados',
+          '${kpis.activeOrderCount}/${kpis.completedOrderCount}',
+        ),
+        _buildKpiPill(
+          'Aceptación inserciones',
+          '${(kpis.insertionAcceptanceRate * 100).toStringAsFixed(0)}%',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKpiPill(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6F8),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.grey,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppTheme.secondary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -6,6 +6,7 @@ import '../models/app_user.dart';
 import '../models/driver_model.dart';
 import '../models/order_model.dart';
 import '../models/analytics_models.dart';
+import '../models/simulation_model.dart';
 import 'api_exception.dart';
 
 class ApiClient {
@@ -154,6 +155,110 @@ class ApiClient {
     }
 
     return DriverKpiModel.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<SimulationStatus> startRoute20Simulation({required String token}) async {
+    final response = await _httpClient.post(
+      _buildUri('/simulations/route-20/start'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid simulation start response format');
+    }
+    return SimulationStatus.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<SimulationStatus> getRoute20SimulationStatus({required String token}) async {
+    final response = await _httpClient.get(
+      _buildUri('/simulations/route-20/status'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid simulation status response format');
+    }
+    return SimulationStatus.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<DriverKpiModel> getRoute20SimulationKpis({required String token}) async {
+    final response = await _httpClient.get(
+      _buildUri('/simulations/route-20/kpis'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid simulation KPI response format');
+    }
+    return DriverKpiModel.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<SimulationStatus> resetRoute20Simulation({required String token}) async {
+    final response = await _httpClient.post(
+      _buildUri('/simulations/route-20/reset'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid simulation reset response format');
+    }
+    return SimulationStatus.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<SimulationStatus> startReroutingSimulation({required String token}) async {
+    final response = await _httpClient.post(
+      _buildUri('/simulations/rerouting/start'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid rerouting simulation start response format');
+    }
+    return SimulationStatus.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<SimulationStatus> getReroutingSimulationStatus({required String token}) async {
+    final response = await _httpClient.get(
+      _buildUri('/simulations/rerouting/status'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid rerouting simulation status response format');
+    }
+    return SimulationStatus.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<DriverKpiModel> getReroutingSimulationKpis({required String token}) async {
+    final response = await _httpClient.get(
+      _buildUri('/simulations/rerouting/kpis'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid rerouting simulation KPI response format');
+    }
+    return DriverKpiModel.fromJson(Map<String, dynamic>.from(decoded));
+  }
+
+  Future<SimulationStatus> resetReroutingSimulation({required String token}) async {
+    final response = await _httpClient.post(
+      _buildUri('/simulations/rerouting/reset'),
+      headers: _headers(token: token),
+    );
+    _ensureSuccess(response);
+    final decoded = _decodeBody(response);
+    if (decoded is! Map) {
+      throw const ApiException('Invalid rerouting simulation reset response format');
+    }
+    return SimulationStatus.fromJson(Map<String, dynamic>.from(decoded));
   }
 
   Future<List<OrderModel>> getOrders({required String token}) async {
@@ -355,6 +460,17 @@ class ApiClient {
       _buildUri('/drivers/${Uri.encodeComponent(driverId)}/location'),
       headers: _headers(token: token),
       body: jsonEncode({'lat': lat, 'lng': lng, 'heading': heading}),
+    );
+    _ensureSuccess(response);
+  }
+
+  Future<void> deleteDriver({
+    required String token,
+    required String driverId,
+  }) async {
+    final response = await _httpClient.delete(
+      _buildUri('/drivers/${Uri.encodeComponent(driverId)}'),
+      headers: _headers(token: token),
     );
     _ensureSuccess(response);
   }

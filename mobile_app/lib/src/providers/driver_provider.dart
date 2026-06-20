@@ -339,19 +339,29 @@ class DriverProvider extends ChangeNotifier {
 
   Future<void> sendLocationDirect(double lat, double lng) async {
     try {
-      await _driverService.updateDriverLocation(
-        token: _token,
-        driverId: _user.id,
-        lat: lat,
-        lng: lng,
-      );
+      if (_activeJornada != null) {
+        await _driverService.updateDriverLocation(
+          token: _token,
+          driverId: _user.id,
+          lat: lat,
+          lng: lng,
+        );
 
-      _wsService.send({
-        'type': 'driver:location',
-        'lat': lat,
-        'lng': lng,
-        'heading': 0.0,
-      });
+        _wsService.send({
+          'type': 'driver:location',
+          'lat': lat,
+          'lng': lng,
+          'heading': 0.0,
+        });
+
+        _pushEvent(
+          'Ubicación real enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+        );
+      } else {
+        _pushEvent(
+          'Ubicación local actualizada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+        );
+      }
 
       _driverLocation = DriverLocation(
         driverId: _user.id,
@@ -362,9 +372,6 @@ class DriverProvider extends ChangeNotifier {
         isAvailable: _isAvailable,
       );
 
-      _pushEvent(
-        'Ubicación real enviada: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
-      );
       notifyListeners();
     } catch (e) {
       debugPrint('[DriverProvider] Error sending location: $e');

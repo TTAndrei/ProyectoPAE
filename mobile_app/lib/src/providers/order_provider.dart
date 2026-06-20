@@ -135,7 +135,7 @@ class OrderProvider extends ChangeNotifier {
   Future<OrderModel> createOrder({
     required String type,
     String? name,
-    required String driverId,
+    String? driverId,
     required String address,
     required double lat,
     required double lng,

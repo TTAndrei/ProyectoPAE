@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/driver_model.dart';
 import '../../../providers/central_provider.dart';
+import '../../../providers/order_provider.dart';
 import '../../../theme/app_theme.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/app_empty_card.dart';
@@ -128,6 +129,201 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
         );
       }),
     );
+  }
+
+  Future<void> _showLocationDialog(DriverModel driver) async {
+    final latController = TextEditingController(
+      text: driver.lat?.toStringAsFixed(6) ?? '41.626200',
+    );
+    final lngController = TextEditingController(
+      text: driver.lng?.toStringAsFixed(6) ?? '2.688000',
+    );
+    final headingController = TextEditingController(
+      text: (driver.heading ?? 0).toStringAsFixed(0),
+    );
+    final formKey = GlobalKey<FormState>();
+
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          var isSaving = false;
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              Future<void> submit() async {
+                if (!formKey.currentState!.validate()) return;
+                setDialogState(() => isSaving = true);
+
+                final lat = double.parse(latController.text.trim());
+                final lng = double.parse(lngController.text.trim());
+                final heading =
+                    double.tryParse(headingController.text.trim()) ?? 0.0;
+
+                try {
+                  await this.context.read<CentralProvider>().updateDriverLocation(
+                        driverId: driver.id,
+                        lat: lat,
+                        lng: lng,
+                        heading: heading,
+                      );
+                  if (!mounted) return;
+                  Navigator.of(dialogContext).pop();
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Ubicación actualizada para ${driver.name}',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error actualizando ubicación: $error'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                } finally {
+                  if (mounted) {
+                    setDialogState(() => isSaving = false);
+                  }
+                }
+              }
+
+              return AlertDialog(
+                title: Text('Editar ubicación de ${driver.name}'),
+                content: Form(
+                  key: formKey,
+                  child: SizedBox(
+                    width: 420,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: latController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Latitud',
+                            border: OutlineInputBorder(),
+                            helperText: 'Pineda aprox. 41.6262',
+                          ),
+                          validator: (value) {
+                            final lat = double.tryParse(value?.trim() ?? '');
+                            if (lat == null) return 'Latitud inválida';
+                            if (lat < -90 || lat > 90) {
+                              return 'Debe estar entre -90 y 90';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: lngController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Longitud',
+                            border: OutlineInputBorder(),
+                            helperText: 'Pineda aprox. 2.6880',
+                          ),
+                          validator: (value) {
+                            final lng = double.tryParse(value?.trim() ?? '');
+                            if (lng == null) return 'Longitud inválida';
+                            if (lng < -180 || lng > 180) {
+                              return 'Debe estar entre -180 y 180';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: headingController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Rumbo',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed:
+                        isSaving ? null : () => Navigator.of(context).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: isSaving ? null : submit,
+                    icon: const Icon(Icons.my_location_rounded),
+                    label: Text(isSaving ? 'Guardando...' : 'Guardar'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      latController.dispose();
+      lngController.dispose();
+      headingController.dispose();
+    }
+  }
+
+  Future<void> _confirmDeleteDriver(DriverModel driver) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Eliminar ${driver.name}'),
+        content: Text(
+          'Se eliminará el conductor @${driver.username}. Sus pedidos activos volverán a pendientes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.delete_rounded),
+            label: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await context.read<CentralProvider>().deleteDriver(driver.id);
+      if (!mounted) return;
+      await context.read<OrderProvider>().loadOrders();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Conductor ${driver.name} eliminado'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error eliminando conductor: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -313,6 +509,24 @@ class _CentralDriversScreenState extends State<CentralDriversScreen> {
                                                 ? () =>
                                                     widget.onViewOnMap(driver)
                                                 : null,
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.my_location_rounded,
+                                            ),
+                                            tooltip: 'Editar ubicación',
+                                            color: AppTheme.primary,
+                                            onPressed: () =>
+                                                _showLocationDialog(driver),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.delete_rounded,
+                                            ),
+                                            tooltip: 'Eliminar conductor',
+                                            color: Colors.red,
+                                            onPressed: () =>
+                                                _confirmDeleteDriver(driver),
                                           ),
                                         ],
                                       ),
