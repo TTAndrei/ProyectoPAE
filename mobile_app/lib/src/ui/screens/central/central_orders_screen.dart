@@ -90,7 +90,6 @@ class _CentralOrdersScreenState extends State<CentralOrdersScreen> {
     final drivers = centralProv.drivers;
     final pendingOrders = orderProv.pendingOrders;
     final activeOrders = orderProv.activeOrders;
-    final events = orderProv.events;
     final isLoading = orderProv.isLoading || centralProv.isLoading;
 
     final double screenWidth = MediaQuery.of(context).size.width;
@@ -184,154 +183,59 @@ class _CentralOrdersScreenState extends State<CentralOrdersScreen> {
                 ),
           const SizedBox(height: 24),
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isWide = constraints.maxWidth > 768;
-
-                List<Widget> buildOrdersListContent() {
-                  return [
-                    const Text(
-                      'Pendientes por Asignar',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.secondary),
-                    ),
-                    const SizedBox(height: 12),
-                    if (pendingOrders.isEmpty)
-                      AppEmptyCard(message: 'No hay pedidos pendientes')
-                    else
-                      ...pendingOrders.map(
-                        (order) =>
-                            _buildPendingOrderCard(order, drivers, isLoading),
-                      ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Pedidos en Ruta',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.secondary),
-                    ),
-                    const SizedBox(height: 12),
-                    if (activeOrders.isEmpty)
-                      AppEmptyCard(message: 'No hay pedidos en curso')
-                    else
-                      ...activeOrders.map((order) {
-                        final assignedDriver = drivers
-                            .where((d) => d.id == order.assignedDriverId)
-                            .firstOrNull;
-                        return Card(
-                          color: Colors.white,
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: Icon(
-                              _orderTypeIcon(order.type),
-                              color: AppTheme.secondary,
-                            ),
-                            title: Text(order.address,
-                                style: const TextStyle(
-                                    fontSize: 13, fontWeight: FontWeight.w600)),
-                            subtitle: Text(
-                              'ID: ${order.id}\n${_orderTypeLabel(order.type)} - Estado: ${order.status} - Repartidor: ${assignedDriver != null ? assignedDriver.name : "sin asignar"}',
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ),
-                        );
-                      }),
-                  ];
-                }
-
-                final eventsCard = Card(
-                  color: Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Eventos en Tiempo Real',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.secondary),
-                        ),
-                        const SizedBox(height: 16),
-                        Expanded(
-                          child: events.isEmpty
-                              ? const Center(
-                                  child: Text('Sin eventos recientes',
-                                      style: TextStyle(color: Colors.grey)))
-                              : ListView.separated(
-                                  itemCount: events.length,
-                                  separatorBuilder: (_, __) => const Divider(),
-                                  itemBuilder: (context, index) {
-                                    final event = events[index];
-                                    final isError = event
-                                            .toLowerCase()
-                                            .contains('desconectado') ||
-                                        event
-                                            .toLowerCase()
-                                            .contains('rechazó') ||
-                                        event.toLowerCase().contains('error');
-                                    return ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      dense: true,
-                                      leading: Icon(
-                                        isError
-                                            ? Icons.warning_rounded
-                                            : Icons.info_rounded,
-                                        color:
-                                            isError ? Colors.red : Colors.blue,
-                                        size: 18,
-                                      ),
-                                      title: Text(
-                                        event,
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500),
-                                      ),
-                                    );
-                                  },
-                                ),
-                        ),
-                      ],
-                    ),
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                const Text(
+                  'Pendientes por Asignar',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.secondary),
+                ),
+                const SizedBox(height: 12),
+                if (pendingOrders.isEmpty)
+                  AppEmptyCard(message: 'No hay pedidos pendientes')
+                else
+                  ...pendingOrders.map(
+                    (order) =>
+                        _buildPendingOrderCard(order, drivers, isLoading),
                   ),
-                );
-
-                if (isWide) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: ListView(
-                          padding: EdgeInsets.zero,
-                          children: buildOrdersListContent(),
+                const SizedBox(height: 24),
+                const Text(
+                  'Pedidos en Ruta',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.secondary),
+                ),
+                const SizedBox(height: 12),
+                if (activeOrders.isEmpty)
+                  AppEmptyCard(message: 'No hay pedidos en curso')
+                else
+                  ...activeOrders.map((order) {
+                    final assignedDriver = drivers
+                        .where((d) => d.id == order.assignedDriverId)
+                        .firstOrNull;
+                    return Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Icon(
+                          _orderTypeIcon(order.type),
+                          color: AppTheme.secondary,
+                        ),
+                        title: Text(order.address,
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                          'ID: ${order.id}\n${_orderTypeLabel(order.type)} - Estado: ${order.status} - Repartidor: ${assignedDriver != null ? assignedDriver.name : "sin asignar"}',
+                          style: const TextStyle(fontSize: 11),
                         ),
                       ),
-                      const SizedBox(width: 24),
-                      Expanded(
-                        flex: 2,
-                        child: eventsCard,
-                      ),
-                    ],
-                  );
-                } else {
-                  return ListView(
-                    padding: EdgeInsets.zero,
-                    children: [
-                      ...buildOrdersListContent(),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        height: 350,
-                        child: eventsCard,
-                      ),
-                    ],
-                  );
-                }
-              },
+                    );
+                  }),
+              ],
             ),
           ),
         ],

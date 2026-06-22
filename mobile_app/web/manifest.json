@@ -1,6 +1,6 @@
 {
-    "name": "pae_mobile",
-    "short_name": "pae_mobile",
+    "name": "Send Track Receiver",
+    "short_name": "Send Track Receiver",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

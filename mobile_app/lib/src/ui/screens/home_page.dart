@@ -41,7 +41,7 @@ class HomePage extends StatelessWidget {
         backgroundColor: AppTheme.secondary,
         foregroundColor: Colors.white,
         title: Text(
-          'PAE Mobile - ${user.name} (${user.role})',
+          'Send Track Receiver',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
