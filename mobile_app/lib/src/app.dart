@@ -43,7 +43,7 @@ class PaeMobileApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'PAE Mobile',
+        title: 'Send Track Receiver',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const RootPage(),

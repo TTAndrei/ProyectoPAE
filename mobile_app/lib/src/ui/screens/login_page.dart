@@ -99,9 +99,10 @@ class _LoginPageState extends State<LoginPage> {
                             const SizedBox(height: 12),
                             // App name
                             Text(
-                              'PAE Mobile',
+                              'Send Track Receiver',
+                              textAlign: TextAlign.center,
                               style: GoogleFonts.inter(
-                                fontSize: 32,
+                                fontSize: 28,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
                                 letterSpacing: -0.5,

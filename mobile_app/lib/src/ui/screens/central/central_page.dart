@@ -283,7 +283,7 @@ class _CentralPageState extends State<CentralPage> {
       case 'analytics':
         return 'Analíticas';
       default:
-        return 'Logistics OS';
+        return '';
     }
   }
 
@@ -324,7 +324,7 @@ class _CentralPageState extends State<CentralPage> {
                                 const SizedBox(width: 12),
                                 const Expanded(
                                   child: Text(
-                                    'Logistics OS',
+                                    '',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 18,
